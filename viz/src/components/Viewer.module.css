@@ -1,0 +1,134 @@
+.root {
+  position: fixed;
+  inset: 0;
+  background: #0a0c10;
+  color: #d6dae0;
+  overflow: hidden;
+}
+
+.canvasHost {
+  position: absolute;
+  inset: 0;
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.dropTitle {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: #9aa3af;
+}
+
+.dragActive {
+  outline: 2px dashed #4a90d9;
+  outline-offset: -12px;
+}
+
+.button {
+  pointer-events: auto;
+  background: #1b2330;
+  color: #d6dae0;
+  border: 1px solid #2c3a4e;
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.button:hover {
+  background: #243042;
+}
+
+.error {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #3a1518;
+  border: 1px solid #7a2e33;
+  color: #f0b7ba;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 10;
+  max-width: 80%;
+}
+
+.bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(16, 20, 27, 0.88);
+  border: 1px solid #232b38;
+  border-radius: 8px;
+  padding: 8px 12px;
+  z-index: 5;
+  backdrop-filter: blur(6px);
+}
+
+.playBtn {
+  background: #1b2330;
+  color: #d6dae0;
+  border: 1px solid #2c3a4e;
+  border-radius: 6px;
+  width: 34px;
+  height: 28px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.playBtn:hover {
+  background: #243042;
+}
+
+.speed {
+  background: #12161d;
+  color: #d6dae0;
+  border: 1px solid #2c3a4e;
+  border-radius: 6px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.slider {
+  flex: 1 1 auto;
+  accent-color: #4a90d9;
+  min-width: 60px;
+}
+
+.counter {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: #9aa3af;
+  flex: 0 0 auto;
+  min-width: 86px;
+  text-align: right;
+}
+
+.label {
+  font-size: 12px;
+  color: #6d7683;
+  flex: 0 0 auto;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

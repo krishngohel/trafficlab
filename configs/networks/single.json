@@ -1,0 +1,9 @@
+{
+  "type": "grid",
+  "rows": 1,
+  "cols": 1,
+  "block": 200.0,
+  "arm": 150.0,
+  "lanes": 2,
+  "speed_limit": 13.9
+}

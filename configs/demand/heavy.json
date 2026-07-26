@@ -1,0 +1,5 @@
+{
+  "base_rate": 800,
+  "profile": [[0, 1.2]],
+  "turning": {"left": 0.2, "through": 0.65, "right": 0.15}
+}

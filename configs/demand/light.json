@@ -1,0 +1,4 @@
+{
+  "base_rate": 300,
+  "turning": {"left": 0.2, "through": 0.65, "right": 0.15}
+}
