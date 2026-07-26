@@ -1,0 +1,13 @@
+[project]
+name = "trafficlab"
+version = "0.1.0"
+description = "Multi-agent traffic signal control RL research platform"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2.0", "torch>=2.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
