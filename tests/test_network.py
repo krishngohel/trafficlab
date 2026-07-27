@@ -336,10 +336,11 @@ def test_shipped_configs_are_phase_conflict_free(name):
     build(name)                            # must not raise: opposing lefts clear
 
 
-def test_diagonal_arm_same_phase_conflict_raises():
-    # Arms at 0/30/180/210 degrees: both diagonals classify onto the EW axis,
-    # so the EW phase holds through movements from different lanes that cross
-    # inside the box. The build-time conflict check must reject this.
+def test_diagonal_arm_rejected_at_build():
+    # Arms at 0/30/180/210 degrees: the 0 and 30 degree arms both classify as
+    # approach 'E'. Such configs used to slip through to phase construction and
+    # put crossing movements in one green; now the approach-label collision
+    # guard rejects them at build time, before phases are even assembled.
     def stub(i, ang):
         return {"id": i, "x": 150.0 * math.cos(math.radians(ang)),
                 "y": 150.0 * math.sin(math.radians(ang)), "type": "boundary"}
@@ -350,9 +351,8 @@ def test_diagonal_arm_same_phase_conflict_raises():
         "edges": [{"from": 0, "to": i, "lanes": 1, "two_way": True}
                   for i in range(1, 5)],
     }
-    with pytest.raises(ValueError, match=r"phase 'EW' at intersection 0") as exc:
+    with pytest.raises(ValueError, match=r"both classify as approach 'E'"):
         Network.from_config(cfg)
-    assert "connections" in str(exc.value)  # names the two crossing connection ids
 
 
 # ---------------------------------------------------------------- meta + determinism

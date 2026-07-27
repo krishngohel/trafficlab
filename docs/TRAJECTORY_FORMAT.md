@@ -4,8 +4,20 @@ The contract between the Python simulator (producer) and the WebGL visualizer (c
 Binary, little-endian, packed (no alignment padding). One file = one fully self-contained
 replay: network geometry, per-tick vehicle states, signal states, queues, rewards, metrics.
 
-Reference implementations: `src/trafficlab/trajectory.py` (Python), `viz/src/lib/traj.ts` (TypeScript).
-Any change to this format requires a version bump here and in both implementations.
+Reference implementations — a change to this format requires a version bump here **and** in
+both of these:
+
+| role | path |
+|---|---|
+| Python writer / reader / validator | `src/trafficlab/trajectory.py` |
+| TypeScript parser (lazy frames + `scanMeta`) | `viz/src/lib/traj.ts` |
+
+Everything else is downstream of those two: `src/trafficlab/simulator.py` (the producer, via
+`attach_writer`), `src/trafficlab/network.py::Network.to_meta_network()` (emits exactly the
+`meta["network"]` shape below), `src/trafficlab/synthetic.py` (hand-built format-valid
+fixtures, no simulator needed), the conformance tests `tests/test_trajectory.py` and
+`viz/src/lib/{traj,scan}.test.ts`, and the checked-in replays in `viz/public/fixtures/`
+(regenerate those when the version bumps).
 
 ## File layout
 
@@ -97,7 +109,11 @@ During yellow/all-red, `phase` is the **outgoing** phase until green begins on t
 
 File size must equal `index_offset + 8·num_frames + 16`.
 
-## Validity rules (enforced by `validate_bytes` / `validate_file`)
+## Validity rules
+
+Enforced by `trajectory.validate_bytes(buf, max_errors=20, deep=True)` and
+`trajectory.validate_file(path, ...)`, which return a list of error strings (empty = valid);
+`deep=False` skips the per-frame scan.
 
 1. Header magic/version correct; meta parses as JSON with all required keys; all id
    references resolve (lanes→links, connections→lanes, phases→connections,
@@ -116,4 +132,7 @@ Read the whole file into an `ArrayBuffer`. Parse trailer with a `DataView` at
 `byteLength-16`. Vehicle blocks are at unaligned offsets — copy each frame's vehicle block
 into fresh aligned buffers (`Float32Array`/`Uint32Array` of length `7·n`, reinterpreted
 per-field by stride) or read via `DataView`. Decode frames lazily and LRU-cache; do not
-eagerly decode all frames of large files.
+eagerly decode all frames of large files. The reference parser
+(`parseTraj(buffer, { cacheSize })`) defaults to a 120-frame LRU, and its `scanMeta()`
+pass decodes only tick + signals + queues + rewards + metrics for every frame (seeking
+past the vehicle blocks) to build the timeline series.

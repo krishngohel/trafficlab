@@ -191,7 +191,7 @@ def test_gat_adjacency_grid2x2():
 def test_multi_agent_update_grid2x2(mod):
     """Shared update combining rows from all 4 agents/nodes runs and is finite."""
     env = make_env("grid2x2", "light")
-    rollout = 16 if mod is ppo else 4           # 16 agent-steps == 4 graph-steps
+    rollout = 16    # agent-steps for BOTH algos (gat converts to 4 graph-steps)
     tr = mod.Trainer(Cfg(algo_kwargs={"rollout_steps": rollout, "minibatch": 8,
                                       "epochs": 1}), env)
     obs, infos = env.reset(seed=0)

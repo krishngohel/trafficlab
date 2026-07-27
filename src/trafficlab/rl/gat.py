@@ -7,8 +7,10 @@ time (minibatch elements are whole graph-steps). Node order is
 ``sorted(env.agents)``; adjacency comes from ``env.neighbors`` plus
 self-loops. The rollout stores the per-node obs matrix for every graph-step
 as one aligned row per node buffer (row t across node buffers is the
-[N, obs_dim] matrix of graph-step t). Default rollout 1024 graph-steps;
-all other defaults as in ppo.py.
+[N, obs_dim] matrix of graph-step t). rollout_steps and minibatch are in
+AGENT-steps exactly as in ppo.py (converted to graph-steps internally), so
+one algo_kwargs block gives both algos the same update cadence and batch
+sizes; all other defaults as in ppo.py.
 """
 from __future__ import annotations
 
@@ -48,7 +50,10 @@ class Trainer(ppo.Trainer):
         return GATActorCritic(self.obs_dim, self.n_actions)
 
     def _steps_per_agent(self) -> int:
-        return self.rollout_steps    # every node buffer holds all graph-steps
+        # rollout_steps counts AGENT-steps, the same unit ppo.py uses, so a
+        # sweep passing one algo_kwargs block compares like with like; each
+        # node buffer holds rollout_steps/N graph-steps.
+        return max(1, self.rollout_steps // len(self.agents))
 
     def _forward(self, obs: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return self.net(obs, self.adj, mask)
@@ -67,10 +72,12 @@ class Trainer(ppo.Trainer):
         advantages, returns = stacked("advantages"), stacked("returns")
         totals: dict[str, float] = {}
         count = 0
+        # minibatch is in agent-rows (ppo unit); a graph-step is N rows.
+        mb = max(1, self.minibatch // len(self.agents))
         for _ in range(self.epochs):
             order = self.rng.permutation(t_total)
-            for start in range(0, t_total, self.minibatch):
-                idx = order[start:start + self.minibatch]
+            for start in range(0, t_total, mb):
+                idx = order[start:start + mb]
                 logits, values = self._forward(torch.from_numpy(obs[idx]),
                                                torch.from_numpy(masks[idx]))
                 logp_all = F.log_softmax(logits, dim=-1)

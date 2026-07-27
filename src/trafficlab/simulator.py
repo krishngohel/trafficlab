@@ -59,13 +59,14 @@ class Vehicle:
 class _Shifted:
     """Read-only view of a vehicle with its s shifted into another element's
     coordinates (used for cross-boundary follower checks)."""
-    __slots__ = ("id", "s", "v", "p")
+    __slots__ = ("id", "s", "v", "p", "v0_eff")
 
-    def __init__(self, veh: Vehicle, s: float):
+    def __init__(self, veh: Vehicle, s: float, v0_eff: float | None = None):
         self.id = veh.id
         self.s = s
         self.v = veh.v
         self.p = veh.p
+        self.v0_eff = v0_eff        # element speed cap carried across the shift
 
 
 class Simulator:
@@ -298,6 +299,7 @@ class Simulator:
         occ = self._occ_list(veh.kind, veh.elem)
         idx = occ.index(veh)
         if idx + 1 < len(occ):
+            veh.committed = False   # no longer at the line; a yellow commit lapses
             lead = occ[idx + 1]
             return (lead.s - lead.p.length) - veh.s, lead.v
         # Front of this element: walk the path.
@@ -364,11 +366,12 @@ class Simulator:
                     s_shift = cand.s - self.net.connections[cid].length
                     if s_shift <= s and s_shift > best_s:
                         best_s = s_shift
-                        follower = _Shifted(cand, s_shift)
+                        follower = _Shifted(cand, s_shift, self._v0_eff(cand))
         return leader, follower
 
-    def _accel_vs(self, veh: Vehicle, leader, extra_gap: float = 0.0) -> float:
-        v0 = self._v0_eff(veh) if isinstance(veh, Vehicle) else None
+    def _accel_vs(self, veh, leader, extra_gap: float = 0.0) -> float:
+        v0 = (self._v0_eff(veh) if isinstance(veh, Vehicle)
+              else getattr(veh, "v0_eff", None))
         if leader is None:
             return float(idm_accel(veh.v, 0.0, FREE_GAP, veh.p, v0=v0))
         gap = (leader.s - leader.p.length) - veh.s + extra_gap
@@ -567,10 +570,23 @@ class Simulator:
         down = sum(1 for v in self._occ_list(ON_LANE, conn.to_lane) if v.s <= QUEUE_DIST)
         return up - down
 
+    def _downstream_count(self, lane_id: int) -> int:
+        return sum(1 for v in self._occ_list(ON_LANE, lane_id) if v.s <= QUEUE_DIST)
+
     def phase_pressures(self, ix_id: int) -> np.ndarray:
+        """Per-phase pressure; downstream occupancy is subtracted once per
+        unique exit lane (same de-dup rule as intersection_pressure)."""
         ix = self.net.intersections[ix_id]
-        return np.array([sum(self.movement_pressure(c) for c in ph.connections)
-                         for ph in ix.phases], dtype=np.float64)
+        out = np.zeros(len(ix.phases), dtype=np.float64)
+        for i, ph in enumerate(ix.phases):
+            up = 0.0
+            down_lanes: set[int] = set()
+            for c in ph.connections:
+                conn = self.net.connections[c]
+                down_lanes.add(conn.to_lane)
+                up += self.movement_pressure(c) + self._downstream_count(conn.to_lane)
+            out[i] = up - sum(self._downstream_count(l) for l in sorted(down_lanes))
+        return out
 
     def intersection_pressure(self, ix_id: int) -> float:
         """Sum of upstream movement demand minus downstream occupancy.

@@ -6,13 +6,22 @@ WebGL visualizer for trafficlab `.traj` replay files (Next.js + TypeScript + thr
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000
-npm test         # vitest: parser, metrics scan, series/ramps, playback, camera math
-npm run build    # production build
+npm run dev -- -p 3199   # http://localhost:3199 (project convention; the headless
+                         # scripts below default to this port)
+npm test                 # vitest: 48 specs — parser, metrics scan, series/ramps,
+                         # playback, camera math
+npm run lint             # eslint
+npm run build            # production build
 ```
 
-Open the page, then drag-and-drop a `.traj` file anywhere on the window or load one of the
-bundled demos (`public/fixtures/synthetic.traj`, `public/fixtures/grid2x2_demo.traj`).
+Open the page, then drag-and-drop a `.traj` file anywhere on the window or click one of the
+two demo buttons (`public/fixtures/synthetic.traj`, `public/fixtures/grid2x2_demo.traj`).
+Other checked-in fixtures — `grid2x2_fixed.traj`, `pair_fixed.traj`, `pair_dqn.traj` (a
+same-seed compare pair), and `stress.traj` (perf/regression case) — load by drag-and-drop
+or through the **Load…** / **Compare…** buttons.
+
+Once a file is loaded the top toolbar exposes **Load…**, **Compare…** (or **✕ Compare**),
+**⏺ Export**, **Charts**, and **Panel**.
 
 ## Features
 
@@ -33,17 +42,39 @@ bundled demos (`public/fixtures/synthetic.traj`, `public/fixtures/grid2x2_demo.t
   red negative, radius pulsing with magnitude).
 - **Charts** — collapsible bottom panel with three synced canvas charts (no chart
   library): cumulative delay, throughput, and per-intersection reward (distinct hue per
-  intersection + legend) over sim time, min-max downsampled past 2 000 points, crisp at
-  devicePixelRatio 2, playhead line synced to playback; click/drag any chart to seek.
+  intersection + legend) over sim time, min-max downsampled to ~2 points per CSS pixel,
+  crisp at devicePixelRatio up to 2, playhead line synced to playback; click/drag any
+  chart to seek.
 - **Compare** — load a second `.traj` (Compare… button or drop on the right 40% of the
   window). Left/right split with a draggable divider, one shared clock and camera pose,
   per-side policy chips with live delay/throughput, charts overlay both sides (A solid,
   B dashed), and non-blocking warnings when seeds or networks differ.
 - **Video export** — records the canvas (single or split view) via
-  `canvas.captureStream(60)` + MediaRecorder (VP9, falling back to VP8) honoring the
-  current camera/overlays; choose range (full file or current position → end) and
-  recording speed, then it auto-plays that range and downloads
-  `<policy>_<network>.webm`, restoring the prior playback state afterwards.
+  `canvas.captureStream(60)` + MediaRecorder (VP9, falling back to VP8, then plain webm)
+  honoring the current camera/overlays; choose range (full file or current position → end)
+  and recording speed, then it auto-plays that range and downloads
+  `<policy>_<network>.webm`, restoring the prior playback state afterwards. While
+  recording, a REC badge offers **Stop & save** / **Discard** and the rest of the UI is
+  disabled so the capture stays clean.
+
+## Headless scripts
+
+Both drive a real browser against a **running dev server** (default
+`http://localhost:3199`, override with the last arg / `--base`) — start `npm run dev`
+first; they never boot their own server.
+
+```bash
+node scripts/visual_check.mjs <outDir> [fixture=stress.traj] [base]
+# loads a fixture, exercises overlays/cameras/scrub, measures render FPS,
+# writes numbered screenshots to <outDir> and reports console/page errors
+
+node scripts/export_gif.mjs --a <traj> [--b <traj>] [--seek 0.45] [--speed 4] \
+                           [--secs 12] [--out name.gif] [--base <url>]
+# drives the app's own Export dialog, then ffmpeg two-pass palettes the webm
+# into ../results/gifs/<name>.gif (needs ffmpeg on PATH)
+```
+
+`scripts/_diag.mjs` is a scratch MediaRecorder debugging script, not part of the pipeline.
 
 ## Architecture
 

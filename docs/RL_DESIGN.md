@@ -13,9 +13,11 @@ src/trafficlab/rl/
   buffers.py    ReplayBuffer (DQN), RolloutBuffer (PPO, GAE)
   dqn.py        IDQN: independent double-DQN per agent (optional weight sharing)
   ppo.py        IPPO: one shared actor-critic over all agents, clipped PPO, GAE
+  ippo.py       alias module: `algo="ippo"` imports ppo.Trainer (no logic of its own)
   gat.py        GAT-PPO: graph-attention encoder over intersection neighbors
   harness.py    RunConfig, train(), checkpoint/resume, SQLite metrics, eval + traj dump
   sweep.py      sweep runner over RunConfig grids with multiprocessing
+  _stub_test_algo.py   trivial Trainer used by the harness tests (not a real algo)
 ```
 
 ## harness.py
@@ -109,37 +111,88 @@ single shared QNet for all agents (still independent decisions). Cadence note: w
 shared weights the one net receives one Adam step per agent per env step, so target
 syncs happen every `target_sync / n_agents` env steps and the effective learning rate
 scales with agent count relative to the per-agent path. Defaults:
-buffer 50k per agent, batch 64, target sync every 500 updates, 1 update/env step per agent,
+buffer 50k per agent, batch 64, target sync every 500 updates, 1 update/env step per agent
+once that agent's buffer holds `warmup` (500) transitions,
 epsilon 1.0→0.05 linear over 40% of total_steps, gradient clip 10, Huber loss.
+`algo_kwargs` keys: `share_weights`, `buffer_size`, `batch_size`, `target_sync`, `warmup`,
+`grad_clip`, `eps_start`, `eps_final`, `eps_decay_frac`, `reward_scale`.
 Replay stores (obs, action, reward, next_obs, next_mask, truncated) per agent; standard
 bootstrap on truncation (bootstrap from next state — continuing task).
 
 ## ppo.py (IPPO, parameter sharing)
 
-One shared ActorCritic; every agent's transition is a row in the shared rollout.
+One shared ActorCritic; every agent's transition is a row in the shared rollout, kept as
+one GAE chain per agent so advantages never mix agents' reward streams.
 Defaults: rollout 2048 agent-steps, 4 epochs, minibatch 256, clip 0.2, GAE lambda 0.95,
-entropy coef 0.01, value coef 0.5, grad clip 0.5, advantage normalization per batch.
-Value bootstraps across episode truncation.
+entropy coef 0.01, value coef 0.5, grad clip 0.5, advantages normalized **per minibatch**
+(minibatches shuffle rows from all agents together). Value bootstraps across episode
+truncation. `algo_kwargs` keys: `rollout_steps`, `epochs`, `minibatch`, `clip`,
+`gae_lambda`, `entropy_coef`, `value_coef`, `grad_clip`, `reward_scale`.
 
 ## gat.py (GAT-PPO)
 
-PPO loop identical to ppo.py but the policy is GATActorCritic over the whole network
-graph at once (batch dimension = time); adjacency from `env.neighbors` + self loops.
-Same defaults as ppo.py, rollout 1024 graph-steps.
+`gat.Trainer` subclasses `ppo.Trainer`: the PPO loop is identical, but the policy is a
+GATActorCritic evaluated over every intersection at once (batch dimension = time, so a
+minibatch element is a whole graph-step). Node order is `sorted(env.agents)`; adjacency
+from `env.neighbors` + self loops. Same defaults and `algo_kwargs` as ppo.py, except
+rollout 1024 graph-steps.
+
+## reward_scale (all three algos)
+
+`algo_kwargs["reward_scale"]` (default 1.0) multiplies rewards at buffer insertion. It is
+not cosmetic: raw pressure/queue rewards are O(−30..−80) per step, and against a
+zero-initialized value head the resulting value loss bulldozes the shared PPO trunk. See
+iteration 1 in `docs/EXPERIMENT_LOG.md`.
+
+## Tuned recipe (what the defaults above are NOT)
+
+The per-algo defaults in this file are the *library* defaults. They are deliberately left
+alone; the settings that actually learn were found empirically and live in the sweep specs
+(`configs/sweeps/iter*.json`), with the reasoning in `docs/EXPERIMENT_LOG.md`. As of
+iteration 5/6 the working recipe is:
+
+| knob | library default | tuned value | why (EXPERIMENT_LOG) |
+|---|---|---|---|
+| `decision_interval` | 5.0 s | **10.0 s** | at 5 s the min-green mask forces ~half of all actions; 10 s gives clean unmasked decisions (iter 3) |
+| `gamma` | 0.97 | **0.9** | sharpens credit to ~10 decisions instead of ~33 (iter 4) |
+| `algo_kwargs.reward_scale` | 1.0 | **0.02** | fixes the value-loss pathology (iter 1–2) |
+| `rollout_steps` (PPO/GAT) | 2048 / 1024 | **512** | 2048 with one agent = 9 updates per 20k-step run (iter 2–5) |
+| `minibatch` (PPO/GAT) | 256 | **128** | pairs with the smaller rollout |
+| `entropy_coef` (PPO/GAT) | 0.01 | **0.02** | early exploration insurance (iter 4) |
+| `warmup` (DQN) | 500 | **2000** | steadier early TD targets (iter 4–6) |
+| `reward` | `pressure` | **`queue`** | separates hold-vs-cycle ~2× better (iter 4–5) |
+| algo | — | **`dqn`** | DQN beat IPPO and every classical baseline by 60k steps (iter 5) |
+
+Do not change the module defaults to match this table without re-running the sweeps —
+`docs/EXPERIMENT_LOG.md` compares runs against the defaults as written here.
 
 ## sweep.py
 
 ```python
 def expand_grid(base: RunConfig, grid: dict[str, list]) -> list[RunConfig]
-    # dotted keys allowed: "lr", "algo_kwargs.epsilon_final", ...; run_name auto-suffixed
-def run_sweep(configs, processes: int = 6) -> "pandas.DataFrame"
+    # dotted keys allowed: "lr", "algo_kwargs.entropy_coef", ...; run_name auto-suffixed
+    # with the varied key=value pairs (see runs/ dir names)
+def run_sweep(configs, processes: int = 6, resume: bool = False) -> "pd.DataFrame"
     # multiprocessing Pool over train(); collects final eval rows from each run DB
 def summarize(out_root="runs") -> DataFrame   # all runs: final eval mean_delay/throughput
 python scripts/sweep.py --spec configs/sweeps/<name>.json   # {"base": {...}, "grid": {...}}
 ```
 
+`sweep.py` imports pandas at module level; it is not a declared project dependency
+(pyproject lists only numpy + torch), so sweeps and the analysis scripts need it installed.
+
 ## scripts
 
 - `scripts/train.py --algo ippo --network single --demand rush --seed 0 ...` → harness.train
+  (also `--reward`, `--total-steps`, `--decision-interval`, `--gamma`, `--lr`,
+  `--eval-every`, `--eval-episodes`, `--eval-seed-base`, `--run-name`, `--out-root`,
+  `--algo-kwargs '<json>'`, `--no-record-eval-traj`)
 - `scripts/sweep.py --spec <json> [--processes 6]`
 - Both accept `--resume`.
+- `scripts/evaluate.py --runs runs/<name> ...` loads a trained policy from that run dir
+  (`config.json` + `ckpt_latest.pt`) and evaluates it greedily alongside the baselines;
+  `scripts/tables.py` / `scripts/plots.py` turn its CSV into `results/TABLES.md`,
+  `results/summary.json`, and `results/plots/*.png`.
+
+Shipped sweep specs live in `configs/sweeps/`; each iteration's spec is referenced from
+the matching section of `docs/EXPERIMENT_LOG.md`.

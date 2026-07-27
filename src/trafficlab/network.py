@@ -413,6 +413,11 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
                 label = "N" if dy > 0 else "S"
             else:
                 label = "E" if dx > 0 else "W"
+            if label in appr:
+                raise ValueError(
+                    f"intersection at node {nid}: two incoming links both classify "
+                    f"as approach '{label}' (arms within 45 deg of each other); "
+                    f"split-phase labeling cannot distinguish them - adjust geometry")
             ap = appr.setdefault(label, {"axis": axis, "conns": [], "left": False,
                                          "lanes": len(in_link.lanes)})
             for out_link in outgoing:
@@ -459,6 +464,10 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
                 for name in (axis, axis + "-L"):
                     if groups[name]:
                         phases.append(Phase(name, tuple(sorted(groups[name]))))
+        if not phases:
+            raise ValueError(
+                f"intersection at node {nid} has no signal phases "
+                f"(no incoming links or no legal movements)")
         intersections[ix_id] = Intersection(ix_id, nid, phases, yellow, all_red, min_green)
     _check_phase_conflicts(intersections, connections)
     return nodes, links, lanes, connections, intersections

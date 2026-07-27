@@ -70,6 +70,7 @@ export class VizEngine {
   private follow: { side: 0 | 1; id: number } | null = null;
 
   private recording = false;
+  private recordCancelled = false;
   private recordEnd = 0;
   private savedState: { time: number; playing: boolean; speed: number; loop: boolean } | null =
     null;
@@ -322,6 +323,10 @@ export class VizEngine {
         )}.webm`;
         downloadBlob(blob, file);
         this.onToast(`Saved ${file}`);
+      } else if (!this.recordCancelled) {
+        // Never fail silently: an empty blob means the capture stream handed
+        // the encoder no frames, and the user would otherwise see nothing.
+        this.onToast("Recording produced no video — nothing was saved");
       }
       const saved = this.savedState;
       if (saved) {
@@ -350,12 +355,14 @@ export class VizEngine {
     this.clock.playing = true;
     this.recordEnd = this.clock.duration;
     this.recording = true;
+    this.recordCancelled = false;
     this.onRecordingChange(true);
     return null;
   }
 
   stopRecording(cancel = false): void {
     if (!this.recording) return;
+    this.recordCancelled = cancel;
     this.recorder.stop(cancel);
   }
 
@@ -396,6 +403,11 @@ export class VizEngine {
 
     this.rig.update();
     this.renderFrame();
+    // Offer the just-drawn frame to the recorder while the WebGL drawing buffer
+    // is still intact. The recorder rate-limits internally: capturing every
+    // rendered frame overruns the browser's readback/encode pipeline on dense
+    // scenes and yields an empty video.
+    if (this.recording) this.recorder.captureFrame(now);
     for (const cb of this.afterFrame) cb();
   };
 

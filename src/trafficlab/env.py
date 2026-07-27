@@ -124,7 +124,10 @@ class TrafficEnv:
         assert self.sim is not None, "call reset() first"
         self.sim.request_phases({int(a): int(p) for a, p in actions.items()})
         if self.reward_kind == "pressure":
-            self.sim.set_frame_rewards(None)        # default_rewards already = -pressure
+            # Frames keep the SIGNED -pressure channel (the visualizer's
+            # pressure overlay wants sign); training optimizes -|pressure|,
+            # so the recorded channel and the reward differ when p < 0.
+            self.sim.set_frame_rewards(None)
         for _ in range(self.decision_ticks):
             self.sim.step()
         self._elapsed += self.decision_ticks

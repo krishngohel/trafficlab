@@ -123,11 +123,13 @@ class MaxPressureController:
     burns capacity in yellow/all-red (measured on grid2x2/rush: 205-214 s/veh
     at period 5 vs 190-196 at period 15).
 
-    `max_green` is an anti-starvation cap: pressure can stay pinned on a phase
-    whose queue cannot discharge (e.g. head-of-line blocking), so after
-    max_green seconds of green the controller must serve the best OTHER phase
-    (measured on arterial6: without the cap, max-pressure gridlocks at ~2600
-    s/veh with 95% of time on one phase)."""
+    `max_green` is an anti-starvation backstop: pressure can in principle stay
+    pinned on a phase whose queue cannot discharge, in which case the argmax
+    would hold it forever; after max_green seconds of green the controller must
+    serve the best OTHER phase. (The historical arterial6 gridlock this guarded
+    against was ultimately fixed at the root by split phasing in network.py —
+    at the 60 s default this cap rarely binds on the shipped configs, and it is
+    kept as cheap insurance for explicit user networks.)"""
 
     def __init__(self, sim: Simulator, ix_id: int, period: float = 15.0,
                  max_green: float = 60.0):

@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from evaluate import t95  # noqa: E402  (shared Student-t quantiles)
 
 PALETTE = {
     "fixed": "#9e9e9e", "webster": "#607d8b", "actuated": "#42a5f5",
@@ -32,7 +34,8 @@ def bar_ci(ax, df: pd.DataFrame, metric: str, title: str) -> None:
     for i, p in enumerate(policies):
         vals = df[df["policy"] == p][metric].astype(float)
         means.append(vals.mean())
-        cis.append(1.96 * vals.std(ddof=1) / max(len(vals), 2) ** 0.5 if len(vals) > 1 else 0)
+        cis.append(t95(len(vals) - 1) * vals.std(ddof=1) / len(vals) ** 0.5
+                   if len(vals) > 1 else 0)
         colors.append(color_for(p, i))
     ax.bar(xs, means, yerr=cis, capsize=4, color=colors, edgecolor="none")
     ax.set_xticks(xs, [p.replace("_", "\n").replace(":", "\n") for p in policies], fontsize=8)
@@ -50,9 +53,12 @@ def main() -> None:
     out = ROOT / args.out
     out.mkdir(parents=True, exist_ok=True)
 
-    for metric, label in [("delay_per_vehicle", "delay per vehicle (s)"),
-                          ("throughput", "throughput (veh/h eq.)"),
-                          ("mean_queue", "mean total queue (veh)")]:
+    metrics = [("delay_per_vehicle", "delay per vehicle (s)"),
+               ("throughput", "throughput (veh/h eq.)"),
+               ("mean_queue", "mean total queue (veh)")]
+    if "spawned" in df.columns:     # demand actually served — exposes entry damming
+        metrics.append(("spawned", "vehicles spawned"))
+    for metric, label in metrics:
         nets = sorted(df["network"].unique())
         dems = sorted(df["demand"].unique())
         fig, axes = plt.subplots(len(dems), len(nets),

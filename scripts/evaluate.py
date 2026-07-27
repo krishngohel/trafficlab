@@ -36,7 +36,10 @@ def t95(df: int) -> float:
         return 0.0
     if df in T95:
         return T95[df]
-    return min((v for k, v in T95.items() if k >= df), default=1.96) if df < 30 else 1.96
+    if df >= 30:
+        return 1.96
+    # Value at the smallest tabulated df >= requested (monotone, conservative).
+    return min(((k, v) for k, v in T95.items() if k >= df), default=(0, 1.96))[1]
 
 
 def eval_baseline(network: str, demand: str, policy: str, seed: int,
@@ -111,14 +114,21 @@ def _row(network, demand, policy, seed, sim, mean_queue) -> dict:
         "total_delay": round(sim.cum_delay, 1),
         "delay_per_vehicle": round(sim.cum_delay / max(sim.spawned, 1), 2),
         "mean_queue": round(mean_queue, 2),
+        # Arrivals still backlogged at entry at episode end: a controller that
+        # dams its entrances would otherwise look good on delay/vehicle.
+        "unserved": int(sum(sim._pending.values())),
     }
 
 
-def _run_cell(args) -> dict:
+def _run_cell(args) -> dict | None:
     kind, network, demand, policy, seed, record = args
-    if kind == "baseline":
-        return eval_baseline(network, demand, policy, seed, record)
-    return eval_rl(network, demand, policy, seed, record)
+    try:
+        if kind == "baseline":
+            return eval_baseline(network, demand, policy, seed, record)
+        return eval_rl(network, demand, policy, seed, record)
+    except Exception as exc:  # isolate: one bad cell must not sink the matrix
+        return {"network": network, "demand": demand, "policy": str(policy),
+                "seed": seed, "error": f"{type(exc).__name__}: {exc}"}
 
 
 def main() -> None:
@@ -151,23 +161,33 @@ def main() -> None:
         print("nothing to evaluate (empty policy/run selection)")
         return
     print(f"{len(jobs)} evaluation episodes on {args.processes} processes...")
-    rows = []
-    with ProcessPoolExecutor(max_workers=args.processes) as pool:
-        for i, row in enumerate(pool.map(_run_cell, jobs)):
-            if row is not None:     # None = RL run skipped on a foreign network
-                rows.append(row)
-            if (i + 1) % 10 == 0:
-                print(f"  {i + 1}/{len(jobs)}")
-    if not rows:
-        print("all cells were skipped")
-        return
-
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
+    fields = ["network", "demand", "policy", "seed", "spawned", "throughput",
+              "total_delay", "delay_per_vehicle", "mean_queue", "unserved"]
+    rows = []
+    errors = []
+    # Incremental writes: a crash or bad cell never discards finished episodes.
     with open(out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
-        w.writerows(rows)
+        with ProcessPoolExecutor(max_workers=args.processes) as pool:
+            for i, row in enumerate(pool.map(_run_cell, jobs)):
+                if row is not None and "error" in row:
+                    errors.append(row)
+                    print(f"  FAILED {row['network']}/{row['demand']}/"
+                          f"{row['policy']} s{row['seed']}: {row['error']}")
+                elif row is not None:   # None = RL run skipped, foreign network
+                    rows.append(row)
+                    w.writerow(row)
+                    f.flush()
+                if (i + 1) % 10 == 0:
+                    print(f"  {i + 1}/{len(jobs)}")
+    if errors:
+        print(f"{len(errors)} cell(s) FAILED and were excluded")
+    if not rows:
+        print("no successful cells")
+        return
     print(f"wrote {out}")
 
     # Summary with 95% CIs.

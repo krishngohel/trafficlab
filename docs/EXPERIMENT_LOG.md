@@ -184,6 +184,13 @@ the multi-agent comparison M6 evaluates.
 
 ## Iteration 6 — production training
 
-**Setup.** `configs/sweeps/iter6_single_dqn.json`, `configs/sweeps/iter6_grid.json`.
+**Setup.** Scope decision: the 150k-step single runs were cut at 25k after their
+first eval tracked iteration 5's curve exactly (78–84k at 25k) — iteration 5's
+60k-step checkpoints are already at the convergence plateau (63–69k, flat-ish
+after ~40k) and were trained on dynamics identical to the frozen engine (split
+phasing does not alter 2-lane networks), so they are adopted as the production
+single-intersection policies. All compute went to the multi-agent comparison:
+`configs/sweeps/iter6_grid_fast.json` — grid2x2/rush, queue reward, γ 0.9,
+di 10 s, 60k steps × {DQN, IPPO, GAT-PPO} × seeds {0, 1}.
 
 **Results.** _(pending — running)_
