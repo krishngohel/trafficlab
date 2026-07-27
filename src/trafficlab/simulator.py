@@ -36,7 +36,7 @@ GIVE_UP_DIST = 15.0    # wrong-lane fallback: re-pick movement this close to the
 class Vehicle:
     __slots__ = ("id", "kind", "elem", "s", "v", "acc", "p", "movement",
                  "next_conn", "needs_lane", "lc_cooldown", "entered_tick",
-                 "delay", "wait")
+                 "delay", "wait", "committed")
 
     def __init__(self, vid: int, lane: int, params: DriverParams, tick: int):
         self.id = vid
@@ -53,6 +53,19 @@ class Vehicle:
         self.entered_tick = tick
         self.delay = 0.0
         self.wait = 0.0
+        self.committed = False       # passed the point of no return on a yellow
+
+
+class _Shifted:
+    """Read-only view of a vehicle with its s shifted into another element's
+    coordinates (used for cross-boundary follower checks)."""
+    __slots__ = ("id", "s", "v", "p")
+
+    def __init__(self, veh: Vehicle, s: float):
+        self.id = veh.id
+        self.s = s
+        self.v = veh.v
+        self.p = veh.p
 
 
 class Simulator:
@@ -81,6 +94,14 @@ class Simulator:
         for i, (_ix, _link, lanes) in enumerate(self._approaches):
             for l in lanes:
                 self._lane2approach[l] = i
+        # Connections feeding each lane, and connections serving each (link, movement).
+        self._feeders: dict[int, list[int]] = {}
+        self._movement_conns: dict[tuple[int, str], list[int]] = {}
+        for cid in sorted(network.connections):
+            conn = network.connections[cid]
+            self._feeders.setdefault(conn.to_lane, []).append(cid)
+            key = (network.lanes[conn.from_lane].link, conn.movement)
+            self._movement_conns.setdefault(key, []).append(cid)
         # Counters
         self.spawned = 0
         self.departed = 0
@@ -233,17 +254,41 @@ class Simulator:
     def _elem_len(self, kind: int, elem: int) -> float:
         return self.net.lanes[elem].length if kind == ON_LANE else self.net.connections[elem].length
 
+    def _v0_eff(self, veh: Vehicle) -> float:
+        """Effective desired speed: driver's v0 capped by the element speed limit
+        (connections: min of endpoint lane limits, turns further capped)."""
+        if veh.kind == ON_LANE:
+            limit = self.net.lanes[veh.elem].speed_limit
+        else:
+            conn = self.net.connections[veh.elem]
+            limit = min(self.net.lanes[conn.from_lane].speed_limit,
+                        self.net.lanes[conn.to_lane].speed_limit)
+            if conn.movement == "left":
+                limit = min(limit, 9.0)
+            elif conn.movement == "right":
+                limit = min(limit, 7.0)
+        return min(veh.p.v0, limit)
+
     def _signal_gap(self, veh: Vehicle, d_stop: float) -> float | None:
         """Gap to a virtual red-light wall, or None if the vehicle may proceed."""
         if veh.next_conn is None:
             return max(0.0, d_stop - STOP_MARGIN)      # wrong lane / no legal movement
         ix_id = self.net.connections[veh.next_conn].intersection
-        state = self.units[ix_id].signal_for(veh.next_conn)
+        unit = self.units[ix_id]
+        state = unit.signal_for(veh.next_conn)
         if state == GREEN:
+            veh.committed = False
             return None
+        if veh.committed:
+            # A commitment made on yellow persists through the clearance
+            # all-red; it lapses if an opposing phase has already gone green.
+            if state == YELLOW or unit.state == ALL_RED:
+                return None
+            veh.committed = False
         if state == YELLOW:
-            # Proceed if stopping now needs harder braking than 3 m/s².
+            # Commit if stopping now needs harder braking than 3 m/s².
             if d_stop < veh.v * veh.v / 6.0 + veh.v * self.dt:
+                veh.committed = True
                 return None
             return max(0.0, d_stop - STOP_MARGIN)
         return max(0.0, d_stop - STOP_MARGIN)
@@ -263,6 +308,14 @@ class Simulator:
                 return FREE_GAP, 0.0                    # free exit ahead
             wall = self._signal_gap(veh, dist)
             if wall is not None:
+                # A stopped queue can spill back past the stop line: respect a
+                # connection occupant whose rear protrudes behind the wall.
+                if veh.next_conn is not None:
+                    occ_c = self._occ_list(ON_CONN, veh.next_conn)
+                    if occ_c:
+                        rear_gap = dist + occ_c[0].s - occ_c[0].p.length
+                        if rear_gap < wall:
+                            return max(rear_gap, 0.0), occ_c[0].v
                 return wall, 0.0
             kind, elem = ON_CONN, veh.next_conn
         else:
@@ -285,11 +338,16 @@ class Simulator:
         for key in sorted(self._occ):
             for veh in self._occ[key]:
                 gap, v_lead = self._leader_gap(veh)
-                accels[veh.id] = float(idm_accel(veh.v, v_lead, gap, veh.p))
+                accels[veh.id] = float(idm_accel(veh.v, v_lead, gap, veh.p,
+                                                 v0=self._v0_eff(veh)))
         return accels
 
-    def _gaps_in_lane(self, target: int, s: float) -> tuple[Vehicle | None, Vehicle | None]:
-        """(new_leader, new_follower) around position s in target lane."""
+    def _gaps_in_lane(self, target: int, s: float):
+        """(new_leader, new_follower) around position s in target lane.
+
+        The follower search also projects vehicles on connections feeding the
+        target lane (shifted to negative s), so a merger cannot appear out of
+        an intersection into a blind spot."""
         occ = self._occ_list(ON_LANE, target)
         leader = follower = None
         for v in occ:
@@ -297,28 +355,42 @@ class Simulator:
                 leader = v
                 break
             follower = v
+        if follower is None:
+            best_s = -1e18
+            for cid in self._feeders.get(target, ()):
+                occ_c = self._occ_list(ON_CONN, cid)
+                if occ_c:
+                    cand = occ_c[-1]                     # closest to the lane
+                    s_shift = cand.s - self.net.connections[cid].length
+                    if s_shift <= s and s_shift > best_s:
+                        best_s = s_shift
+                        follower = _Shifted(cand, s_shift)
         return leader, follower
 
-    def _accel_vs(self, veh: Vehicle, leader: Vehicle | None, extra_gap: float = 0.0) -> float:
+    def _accel_vs(self, veh: Vehicle, leader, extra_gap: float = 0.0) -> float:
+        v0 = self._v0_eff(veh) if isinstance(veh, Vehicle) else None
         if leader is None:
-            return float(idm_accel(veh.v, 0.0, FREE_GAP, veh.p))
+            return float(idm_accel(veh.v, 0.0, FREE_GAP, veh.p, v0=v0))
         gap = (leader.s - leader.p.length) - veh.s + extra_gap
-        return float(idm_accel(veh.v, leader.v, gap, veh.p))
+        return float(idm_accel(veh.v, leader.v, gap, veh.p, v0=v0))
 
     def _lane_changes(self, accels: dict[int, float]) -> None:
         for vid in sorted(self.vehicles):
             veh = self.vehicles[vid]
-            if veh.kind != ON_LANE or veh.lc_cooldown > 0.0:
+            if veh.kind != ON_LANE:
                 continue
             lane = self.net.lanes[veh.elem]
             link = self.net.links[lane.link]
-            if len(link.lanes) < 2:
-                continue
             d_stop = lane.length - veh.s
-            if d_stop < LC_FORBID_NEAR:
-                if veh.needs_lane is not None and d_stop < GIVE_UP_DIST:
-                    self._fallback_movement(veh)
+            # Wrong-lane give-up runs regardless of cooldown so nobody parks
+            # at the stop line waiting for a lane change that can't happen.
+            if veh.needs_lane is not None and d_stop < GIVE_UP_DIST:
+                self._fallback_movement(veh)
                 continue
+            if veh.lc_cooldown > 0.0 or len(link.lanes) < 2 or d_stop < LC_FORBID_NEAR:
+                continue
+            if veh.s < veh.p.length + 1.0:
+                continue    # rear would protrude behind the lane start
             li = link.lanes.index(veh.elem)
             candidates: list[tuple[int, float]] = []
             if veh.needs_lane is not None:
@@ -328,8 +400,10 @@ class Simulator:
                 bias = 0.5 + 2.0 * max(0.0, 1.0 - d_stop / 150.0)
                 candidates.append((target, bias))
             else:
-                if d_stop < 150.0:
+                if d_stop < 70.0:
                     continue                            # keep lane discipline near the line
+                if (self.tick + veh.id) % 4 != 0:
+                    continue                            # discretionary MOBIL every 2 s
                 for ni in (li - 1, li + 1):
                     if 0 <= ni < len(link.lanes):
                         candidates.append((link.lanes[ni], 0.0))
@@ -337,7 +411,7 @@ class Simulator:
                 if veh.needs_lane is None and veh.movement is not None:
                     serves = any(self.net.connections[c].movement == veh.movement
                                  for c in self.net.lane_connections.get(target, ()))
-                    if not serves and d_stop < 250.0:
+                    if not serves and d_stop < 100.0:
                         continue
                 new_leader, new_follower = self._gaps_in_lane(target, veh.s)
                 if new_leader is not None and (new_leader.s - new_leader.p.length) - veh.s < veh.p.s0:
@@ -356,14 +430,22 @@ class Simulator:
                             if old_follower else 0.0)
                 if mobil_ok(a_self_new, a_self_old, a_nf_new, a_nf_old, a_of_new, a_of_old,
                             veh.p.politeness, veh.p.lc_threshold, bias=bias):
+                    src_len = lane.length
                     self._occ[(ON_LANE, veh.elem)].remove(veh)
                     veh.elem = target
-                    veh.s = min(veh.s, self.net.lanes[target].length - 0.1)
+                    tgt_len = self.net.lanes[target].length
+                    veh.s = min(veh.s * (tgt_len / src_len), tgt_len - 0.1)
                     tocc = self._occ.setdefault((ON_LANE, target), [])
                     tocc.append(veh)
                     tocc.sort(key=lambda v: (v.s, v.id))
                     veh.lc_cooldown = veh.p.lc_cooldown
                     accels[veh.id] = a_self_new
+                    # Followers' accels are now stale; refresh both so this
+                    # tick integrates against reality.
+                    if new_follower is not None:
+                        accels[new_follower.id] = a_nf_new
+                    if old_follower is not None:
+                        accels[old_follower.id] = a_of_new
                     if veh.movement is not None:
                         self._resolve_connection(veh, veh.movement)
                     break
@@ -410,8 +492,13 @@ class Simulator:
                             veh.v = 0.0
                             break
                         s_new = limit
+                        # The clamp teleported us back; cap speed so next tick
+                        # cannot carry us through the vehicle ahead.
+                        gap_now = (rear.s - rear.p.length) - s_new
+                        veh.v = min(veh.v, rear.v + max(0.0, gap_now - 0.5) / dt)
                 self._occ[(veh.kind, veh.elem)].remove(veh)
                 veh.kind, veh.elem, veh.s = dest_kind, dest_elem, s_new
+                veh.committed = False
                 dlist = self._occ.setdefault((dest_kind, dest_elem), [])
                 dlist.insert(0, veh)
                 dlist.sort(key=lambda v: (v.s, v.id))
@@ -457,13 +544,27 @@ class Simulator:
         lane_len = self.net.lanes[lane_id].length
         return sum(1 for v in self._occ_list(ON_LANE, lane_id) if lane_len - v.s <= dist)
 
-    def movement_pressure(self, conn_id: int) -> int:
+    def movement_pressure(self, conn_id: int) -> float:
+        """Upstream minus downstream demand for one movement.
+
+        Wrong-lane vehicles (next_conn None, still maneuvering) count toward
+        their intended movement, split evenly across the connections serving
+        it — otherwise up to a third of a queue is invisible to pressure."""
         conn = self.net.connections[conn_id]
-        up = sum(1 for v in self._occ_list(ON_LANE, conn.from_lane)
-                 if v.next_conn == conn_id and
-                 self.net.lanes[conn.from_lane].length - v.s <= QUEUE_DIST)
-        down_lane = conn.to_lane
-        down = sum(1 for v in self._occ_list(ON_LANE, down_lane) if v.s <= QUEUE_DIST)
+        from_link = self.net.lanes[conn.from_lane].link
+        serving = self._movement_conns[(from_link, conn.movement)]
+        share = 1.0 / len(serving)
+        up = 0.0
+        for lane_id in self.net.links[from_link].lanes:
+            lane_len = self.net.lanes[lane_id].length
+            for v in self._occ_list(ON_LANE, lane_id):
+                if lane_len - v.s > QUEUE_DIST:
+                    continue
+                if v.next_conn == conn_id:
+                    up += 1.0
+                elif v.next_conn is None and v.movement == conn.movement:
+                    up += share
+        down = sum(1 for v in self._occ_list(ON_LANE, conn.to_lane) if v.s <= QUEUE_DIST)
         return up - down
 
     def phase_pressures(self, ix_id: int) -> np.ndarray:
@@ -508,6 +609,7 @@ class Simulator:
             elif veh.movement == "right":
                 flags |= FLAG_RIGHT_BLINKER
             if veh.v < QUEUE_SPEED and veh.kind == ON_LANE and \
+                    self._lane2approach.get(veh.elem) is not None and \
                     self.net.lanes[veh.elem].length - veh.s <= QUEUE_DIST:
                 flags |= FLAG_QUEUED
             recs[i] = (vid, x, y, hdg, veh.v, veh.acc, lane_field, flags, 0)
@@ -527,7 +629,8 @@ class Simulator:
 
     # ---------------------------------------------------------------- invariants
     def check_no_overlap(self, tol: float = 0.01) -> list[str]:
-        """Property-test hook: bumper overlap violations on every element."""
+        """Property-test hook: bumper overlap violations, including across
+        element boundaries (lane→connection→lane chains)."""
         problems = []
         for key in sorted(self._occ):
             occ = self._occ[key]
@@ -535,4 +638,27 @@ class Simulator:
                 gap = (front.s - front.p.length) - rear.s
                 if gap < -tol:
                     problems.append(f"overlap {gap:.3f} m between {rear.id} and {front.id} on {key}")
+        # Boundary pairs: front-most vehicle of an upstream element vs the
+        # rear-most vehicle of each element it can feed.
+        for key in sorted(self._occ):
+            occ = self._occ[key]
+            if not occ:
+                continue
+            front_veh = occ[-1]
+            kind, elem = key
+            up_len = self._elem_len(kind, elem)
+            if kind == ON_CONN:
+                downs = [(ON_LANE, self.net.connections[elem].to_lane)]
+            else:
+                downs = [(ON_CONN, c) for c in self.net.lane_connections.get(elem, ())]
+            for dkey in downs:
+                docc = self._occ_list(*dkey)
+                if not docc:
+                    continue
+                rear_d = docc[0]
+                gap = (rear_d.s - rear_d.p.length) + (up_len - front_veh.s)
+                if gap < -tol:
+                    problems.append(
+                        f"boundary overlap {gap:.3f} m between {front_veh.id} on {key} "
+                        f"and {rear_d.id} on {dkey}")
         return problems

@@ -54,8 +54,8 @@ version bump and matching updates to `trajectory.py` AND `viz/src/lib/traj.ts`.
 ## Milestone status
 
 - [x] M1 contract: .traj format spec + writer/reader/validator + tests
-- [ ] M2 simulator
-- [ ] M3 env + baselines
-- [ ] M4 learning
-- [ ] M5 visualizer
-- [ ] M6 evaluation + writeup
+- [x] M2 simulator (built + property tests green + 64k veh-steps/s; review findings being applied)
+- [x] M3 env + baselines (110-test suite green; review pending)
+- [~] M4 learning (stack built + tested; sweep iterations in progress, see docs/EXPERIMENT_LOG.md)
+- [~] M5 visualizer (scaffold + parser + playback done; feature build in progress)
+- [ ] M6 evaluation + writeup (scripts/evaluate.py + plots.py ready)
