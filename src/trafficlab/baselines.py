@@ -109,9 +109,13 @@ class ActuatedController:
 
 
 class MaxPressureController:
-    """Every `period` seconds, switch to the phase with maximal pressure."""
+    """Every `period` seconds, switch to the phase with maximal pressure.
 
-    def __init__(self, sim: Simulator, ix_id: int, period: float = 5.0):
+    Default period 15 s: with 6 s min-green + 5 s clearance, faster switching
+    burns capacity in yellow/all-red (measured on grid2x2/rush: 205-214 s/veh
+    at period 5 vs 190-196 at period 15)."""
+
+    def __init__(self, sim: Simulator, ix_id: int, period: float = 15.0):
         self.sim = sim
         self.ix_id = ix_id
         self.unit: SignalUnit = sim.units[ix_id]

@@ -1,0 +1,5 @@
+network,demand,policy,seed,spawned,throughput,total_delay,delay_per_vehicle,mean_queue
+single,light,fixed,0,1179,1161,36297.5,30.79,6.27
+single,light,fixed,1,1131,1115,33679.0,29.78,5.78
+single,light,max_pressure,0,1179,1154,32838.5,27.85,4.93
+single,light,max_pressure,1,1131,1110,30257.6,26.75,4.39
