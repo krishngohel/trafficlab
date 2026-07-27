@@ -1,0 +1,24 @@
+{
+  "algo": "ippo",
+  "algo_kwargs": {
+    "entropy_coef": 0.01,
+    "minibatch": 128,
+    "reward_scale": 0.02,
+    "rollout_steps": 256
+  },
+  "decision_interval": 5.0,
+  "demand": "rush",
+  "episode_seconds": 1200.0,
+  "eval_episodes": 2,
+  "eval_every": 6000,
+  "eval_seed_base": 10000,
+  "gamma": 0.97,
+  "lr": 0.0003,
+  "network": "single",
+  "out_root": "runs",
+  "record_eval_traj": true,
+  "reward": "pressure",
+  "run_name": "ippo_single_rush_pressure_s0_reward=pressure_decision_interval=5.0_seed=0",
+  "seed": 0,
+  "total_steps": 30000
+}

@@ -103,4 +103,27 @@ stops forcing every other action, which should clean up credit assignment.
 minibatch 128, reward_scale 0.02, entropy 0.01, lr 3e-4, 30k steps: reward
 {pressure, queue} × decision_interval {5, 10} × seeds {0, 1}.
 
-**Results.** _(pending — sweep running)_
+**Results.** First real movement. Value losses healthy (7–32), entropies now spread
+(0.38–0.71) instead of frozen. Six of eight runs still ended at the ~107k "hold"
+attractor, but pressure reward with decision_interval=10 (seed 0) broke away at the
+final eval: **delay 90,661 / throughput 374** (vs 107k/340 attractor; fixed-time
+70,574/618 on this setting). pressure+di=5 (seed 0) also improved late (99,606).
+The queue reward never moved — its per-step signal barely distinguishes actions when
+every approach is saturated, while pressure at di=10 gets clean, unmasked decisions
+(min-green never forces a stay) and each action's consequence is integrated over a
+full 10 s window.
+
+**Conclusions.** (1) Learning works but is sample-starved at 30k steps — the
+breakaway happened at the last eval. (2) di=10 + pressure is the recipe.
+(3) queue reward is a dead end at rush saturation.
+
+**Adjustment.** Iteration 4 = scale-up: 100k steps IPPO (entropy 0.02 for stronger
+early exploration) and 60k steps double-DQN (epsilon-greedy explores the switch
+space much harder early on), both single/rush, di=10, pressure, seeds {0, 1}.
+
+## Iteration 4 — long-horizon single/rush, IPPO vs DQN
+
+**Setup.** `configs/sweeps/iter4_long_single.json` (IPPO 100k, entropy 0.02) +
+`configs/sweeps/iter4_dqn_single.json` (DQN 60k, warmup 2000, target sync 500).
+
+**Results.** _(pending — running)_
