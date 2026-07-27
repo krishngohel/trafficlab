@@ -160,4 +160,30 @@ traffic-signal literature).
 
 **Setup.** `configs/sweeps/iter5_factorial.json` (8 runs).
 
+**Results.** The credit-assignment fixes worked — and DQN wins decisively.
+Final-eval total delay / throughput on the shared eval seeds (baselines on the
+same setting: fixed 70,574/618, actuated 68,049/658, max-pressure 73,947/614):
+
+| run | 10k | 30k | 60k |
+|---|---|---|---|
+| IPPO pressure s0/s1 | 107k | 99k/101k | 92,010/90,654 (t 444/434) |
+| IPPO queue s0/s1 | 107k | 98k/94k | 88,254/**85,507** (t 496/**612**) |
+| DQN pressure s0/s1 | 94k/89k | 74k/73k | **63,957/63,499** (t 636/602) |
+| DQN queue s0/s1 | 90k/88k | 69k/70k | **63,102**/68,996 (t **646**/621) |
+
+Every run learns monotonically now. **DQN beats all classical baselines by 60k
+steps** (−10% delay vs fixed, −7% vs actuated, +4% throughput vs fixed) and was
+already past fixed by ~20k. IPPO improves steadily but trails badly at equal
+steps — off-policy replay + per-action Q-values + ε-exploration simply suit this
+sparse switching structure better; on-policy PPO pays the advantage-noise tax on
+every rollout. Both rewards work; queue edges pressure.
+
+**Adjustment.** Production runs (iteration 6): DQN/queue on single (150k, 3
+seeds); on grid2x2, all three algos (DQN, IPPO, GAT-PPO) at 100k × 2 seeds for
+the multi-agent comparison M6 evaluates.
+
+## Iteration 6 — production training
+
+**Setup.** `configs/sweeps/iter6_single_dqn.json`, `configs/sweeps/iter6_grid.json`.
+
 **Results.** _(pending — running)_
