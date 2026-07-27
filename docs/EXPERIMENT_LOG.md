@@ -191,6 +191,27 @@ after ~40k) and were trained on dynamics identical to the frozen engine (split
 phasing does not alter 2-lane networks), so they are adopted as the production
 single-intersection policies. All compute went to the multi-agent comparison:
 `configs/sweeps/iter6_grid_fast.json` — grid2x2/rush, queue reward, γ 0.9,
-di 10 s, 60k steps × {DQN, IPPO, GAT-PPO} × seeds {0, 1}.
+di 10 s, 60k steps × {DQN, IPPO, GAT-PPO} × seeds {0, 1}. Mid-run, the final
+audit found GAT interpreted rollout/minibatch in graph-steps (4× fewer updates
+than IPPO from the same config) — fixed, and the GAT pair re-trained
+(`iter6_gat_rerun.json`).
 
-**Results.** _(pending — running)_
+**Results.** Grid2x2/rush training-eval bests (best checkpoint per run, mean of
+2 eval episodes; ~293k = hold-forever floor):
+
+| algo | seed 0 | seed 1 | best step |
+|---|---|---|---|
+| DQN | **223,776** | **223,749** | 45k both |
+| IPPO | 229,312 | 236,516 | 45k both |
+| GAT-PPO (units fixed) | 255,872 | 261,345 | 60k, still falling |
+
+Notes: (1) DQN and IPPO both peaked at 45k and regressed mildly by 60k —
+best-checkpoint selection (`scripts/select_best_ckpt.py`) applied uniformly to
+every run. (2) The GAT rerun validates the audit finding: at IPPO-equal update
+cadence, GAT finally left its plateau, dropping 37k in the last 15k steps and
+still improving at budget exhaustion — it lags IPPO at equal updates but looks
+under-trained rather than broken; a 150k+ run is the obvious follow-up.
+(3) IPPO is far more competitive with 4 agents than on the single intersection
+(parameter sharing amortizes experience across agents), but plain independent
+DQN still wins at this budget. Final cross-policy numbers with 10 eval seeds
+and 95% CIs on the frozen engine: `results/TABLES.md`.

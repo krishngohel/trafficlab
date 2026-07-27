@@ -36,7 +36,7 @@ export default function SidePanel({ cameraMode, onCameraMode, toggles, onToggles
 
   return (
     <div className={styles.sidePanel}>
-      <div>
+      <div className={styles.panelSection}>
         <div className={styles.panelTitle}>Camera</div>
         <div className={styles.camRow}>
           {camBtn("orbit", "Orbit", cameraMode === "orbit")}
@@ -49,14 +49,17 @@ export default function SidePanel({ cameraMode, onCameraMode, toggles, onToggles
             Follow
           </button>
         </div>
-        <div className={`${styles.followHint} ${followId !== null ? styles.followActive : ""}`}>
+        <div
+          data-follow-hint
+          className={`${styles.followHint} ${followId !== null ? styles.followActive : ""}`}
+        >
           {followId !== null
             ? `Following vehicle #${followId} — Esc to release`
             : "Follow: click a vehicle (Esc exits)"}
         </div>
       </div>
 
-      <div>
+      <div className={styles.panelSection}>
         <div className={styles.panelTitle}>Overlays</div>
         {OVERLAY_ITEMS.map((item) => (
           <label

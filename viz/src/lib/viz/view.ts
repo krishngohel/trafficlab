@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 import {
+  buildEnvironment,
   buildRoads,
   disposeGroup,
   networkBounds,
@@ -15,6 +16,7 @@ import {
 } from "../scene";
 import { seriesMax, seriesMaxAbs } from "../series";
 import type { TrajFile, TrajFrame, TrajScan } from "../traj";
+import { waitColumns, type WaitColumns } from "../wait";
 import type { PlaybackClock } from "./playback";
 
 export interface OverlayToggles {
@@ -51,8 +53,11 @@ export class SceneView {
   /** Column indices into scan.metrics for the live HUD (or -1 if absent). */
   readonly delayCol: number;
   readonly throughputCol: number;
+  /** Columns backing the mean-wait HUD. */
+  readonly waitCols: WaitColumns;
 
   private readonly roads: THREE.Group;
+  private readonly environment: THREE.Group;
   private readonly signals: SignalLayer;
   private readonly queueHeat: QueueHeatmapLayer;
   private readonly phaseTimers: PhaseTimerLayer;
@@ -73,6 +78,7 @@ export class SceneView {
 
     this.delayCol = traj.meta.metrics.indexOf("cumulative_delay");
     this.throughputCol = traj.meta.metrics.indexOf("throughput");
+    this.waitCols = waitColumns(traj.meta.metrics);
 
     this.scene = new THREE.Scene();
     // Very dark desaturated blue night sky with matching linear fog whose far
@@ -91,6 +97,7 @@ export class SceneView {
     this.scene.add(sun);
 
     this.roads = buildRoads(traj.meta);
+    this.environment = buildEnvironment(traj.meta);
     this.vehicles = new VehicleLayer();
     this.vehicles.setNetwork(traj.meta);
     this.signals = new SignalLayer(traj.meta);
@@ -115,6 +122,7 @@ export class SceneView {
 
     this.scene.add(
       this.roads,
+      this.environment,
       this.vehicles.mesh,
       this.signals.group,
       this.queueHeat.group,
@@ -195,6 +203,7 @@ export class SceneView {
 
   dispose(): void {
     disposeGroup(this.roads);
+    disposeGroup(this.environment);
     this.vehicles.dispose();
     this.signals.dispose();
     this.queueHeat.dispose();

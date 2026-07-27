@@ -1,17 +1,14 @@
 import * as THREE from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { buildCarGeometry, CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH } from "./carModel";
 import { idHue, speedColor, type RGB } from "../ramps";
 import type { TrajFrame, TrajMeta } from "../traj";
 
 /**
- * All vehicles as a single InstancedMesh of a beveled-box "car".
+ * All vehicles as a single InstancedMesh of a low-poly car (see `carModel.ts`).
  * Color modes: stable per-id hue, or speed/speed_limit ramp (red = stopped,
  * white = half the limit, blue = at the limit).
  */
 
-const CAR_LENGTH = 4.4; // m, along +X (heading axis)
-const CAR_HEIGHT = 1.45;
-const CAR_WIDTH = 1.85;
 const TWO_PI = Math.PI * 2;
 
 export type VehicleColorMode = "id" | "speed";
@@ -55,16 +52,20 @@ export class VehicleLayer {
   private aIndexOf: TrajFrame | null = null;
   private bIndexOf: TrajFrame | null = null;
 
+  /** Half the diagonal of one car, the padding for the instance bounding sphere. */
+  private readonly instanceRadius: number;
+
   constructor(capacity = 4096) {
     this.capacity = capacity;
-    // Beveled box, 2 segments per edge (spec allows ~3 max).
-    const geometry = new RoundedBoxGeometry(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH, 2, 0.28);
-    geometry.translate(0, CAR_HEIGHT / 2 + 0.08, 0);
+    const geometry = buildCarGeometry();
     const material = new THREE.MeshStandardMaterial({
-      roughness: 0.5,
-      metalness: 0.2,
+      roughness: 0.42,
+      metalness: 0.25,
       // Emissive floor so no car ever reads as a black speck at night.
-      emissive: 0x111111,
+      emissive: 0x0e1015,
+      // Windows / tyres / roof highlight ride on the geometry's vertex colors,
+      // which three multiplies with the per-instance body color.
+      vertexColors: true,
     });
     this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.mesh.name = "vehicles";
@@ -72,6 +73,13 @@ export class VehicleLayer {
     // Allocate the instance color buffer up front.
     this.mesh.setColorAt(0, this.color.setRGB(1, 1, 1));
     this.mesh.count = 0;
+    this.instanceRadius = Math.hypot(CAR_LENGTH, CAR_WIDTH, CAR_HEIGHT) / 2;
+    // Own the bounding sphere from the start. If it were left null the renderer
+    // would compute it on the first render — when count is still 0, yielding an
+    // EMPTY sphere that is never invalidated, which silently kills every
+    // subsequent InstancedMesh raycast (click-to-follow). update() refreshes it.
+    this.mesh.boundingSphere = new THREE.Sphere();
+    this.mesh.boundingSphere.makeEmpty();
   }
 
   /** Build the lane-id -> speed-limit table from a file's meta. */
@@ -110,6 +118,10 @@ export class VehicleLayer {
     const speedMode = this.colorMode === "speed";
     const limits = this.laneLimits;
     const nLimits = limits.length;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
 
     for (let i = 0; i < n; i++) {
       let x = a.x[i];
@@ -130,6 +142,10 @@ export class VehicleLayer {
       this.dummy.rotation.set(0, heading, 0);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (-y < minZ) minZ = -y;
+      if (-y > maxZ) maxZ = -y;
 
       if (speedMode) {
         const lane = a.lane[i];
@@ -144,6 +160,18 @@ export class VehicleLayer {
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+
+    // Keep the instance bounding sphere in step with the instances themselves:
+    // three caches it forever once computed, and InstancedMesh.raycast rejects
+    // the whole mesh when the sphere misses. Derived from the min/max collected
+    // above, so this costs nothing beyond the loop that was already running.
+    const sphere = this.mesh.boundingSphere!;
+    if (n === 0) {
+      sphere.makeEmpty();
+    } else {
+      sphere.center.set((minX + maxX) / 2, CAR_HEIGHT / 2, (minZ + maxZ) / 2);
+      sphere.radius = Math.hypot(maxX - minX, maxZ - minZ) / 2 + this.instanceRadius;
+    }
   }
 
   /** Vehicle id rendered at instance `instanceId` in the last update, or -1. */

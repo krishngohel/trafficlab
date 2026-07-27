@@ -33,6 +33,13 @@ export interface RecordOptions {
 const MIN_SPLIT = 0.15;
 const MAX_SPLIT = 0.85;
 
+declare global {
+  interface Window {
+    /** Set by the live engine so headless scripts can inspect it. */
+    trafficlabViz?: VizEngine;
+  }
+}
+
 /**
  * Owns the renderer, the render loop, both scene views (split-screen), the
  * camera rig, picking, vehicle following, and video recording. React never
@@ -104,6 +111,15 @@ export class VizEngine {
 
     this.lastTime = performance.now();
     this.raf = requestAnimationFrame(this.tick);
+    // Headless-test handle: the playwright drivers in scripts/ read follow
+    // state and camera poses through this. Nothing in the app uses it.
+    window.trafficlabViz = this;
+  }
+
+  /** Live camera world position — the headless camera-tracking checks read it. */
+  cameraPose(): { x: number; y: number; z: number } {
+    const p = this.rig.activeCamera().position;
+    return { x: p.x, y: p.y, z: p.z };
   }
 
   get canvas(): HTMLCanvasElement {
@@ -275,7 +291,12 @@ export class VizEngine {
 
     this.ndc.set(((px - vx) / vw) * 2 - 1, -(py / rect.height) * 2 + 1);
     this.rig.applyAspect(vw / rect.height);
-    this.raycaster.setFromCamera(this.ndc, this.rig.activeCamera());
+    const camera = this.rig.activeCamera();
+    // The pointer event can arrive between renders (and OrbitControls damping
+    // moves the camera outside of render), so refresh the world matrix before
+    // building the ray from it.
+    camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(this.ndc, camera);
     const hits = this.raycaster.intersectObject(view.vehicles.mesh, false);
     for (const hit of hits) {
       if (hit.instanceId === undefined) continue;
@@ -454,6 +475,7 @@ export class VizEngine {
   }
 
   dispose(): void {
+    if (window.trafficlabViz === this) delete window.trafficlabViz;
     cancelAnimationFrame(this.raf);
     this.resizeObserver.disconnect();
     this.recorder.stop(true);

@@ -1,5 +1,8 @@
 export { approachAnchors, buildRoads, disposeGroup, intersectionRadii, networkBounds } from "./roads";
 export type { ApproachAnchor, NetworkBounds } from "./roads";
+export { buildEnvironment } from "./environment";
+export { scatterEnvironment } from "./scatter";
+export type { PadSpot, ScatterOptions, TreeSpot } from "./scatter";
 export { VehicleLayer, lerpAngle } from "./vehicles";
 export type { VehicleColorMode, VehiclePose } from "./vehicles";
 export { SignalLayer } from "./signals";

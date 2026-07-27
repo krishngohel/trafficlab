@@ -225,7 +225,7 @@ export class CanvasRecorder {
       }
     }
     if (!this.gate.allow(now)) return;
-    track.requestFrame();
+    track.requestFrame?.();
   }
 
   /** Stop and emit the blob (unless `cancel`), via the onDone callback. */

@@ -16,6 +16,7 @@ import ControlBar from "./ControlBar";
 import ExportDialog from "./ExportDialog";
 import SidePanel from "./SidePanel";
 import Toasts, { type Toast } from "./Toasts";
+import WaitHud from "./WaitHud";
 import styles from "./Viewer.module.css";
 
 type DragHint = "primary" | "compare" | null;
@@ -354,6 +355,10 @@ export default function Viewer() {
       )}
 
       {engine && infoA && infoB && <CompareOverlay engine={engine} infoA={infoA} infoB={infoB} />}
+
+      {engine && infoA && (
+        <WaitHud key={infoB ? "compare" : "single"} engine={engine} compare={infoB !== null} />
+      )}
 
       {recording && (
         <div className={styles.recIndicator}>

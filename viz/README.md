@@ -8,8 +8,9 @@ WebGL visualizer for trafficlab `.traj` replay files (Next.js + TypeScript + thr
 npm install
 npm run dev -- -p 3199   # http://localhost:3199 (project convention; the headless
                          # scripts below default to this port)
-npm test                 # vitest: 48 specs — parser, metrics scan, series/ramps,
-                         # playback, camera math
+npm test                 # vitest: 95 specs — parser, metrics scan, series/ramps,
+                         # playback, camera math, mean-wait stats, car geometry +
+                         # instance picking, scenery scatter
 npm run lint             # eslint
 npm run build            # production build
 ```
@@ -32,6 +33,16 @@ Once a file is loaded the top toolbar exposes **Load…**, **Compare…** (or **
 - **Cameras** — Orbit (`1`), Top-down (`2`, orthographic fitted to the network, rotation
   locked, pan + zoom only), and Follow: click a vehicle to chase it (smoothed target,
   orbit offset preserved while following, highlight ring). `Esc` or despawn exits.
+- **Scene** — vehicles are a ~176-triangle low-poly car (tapered body, raked glasshouse,
+  darkened rocker, four wheels) drawn as one InstancedMesh; window glass, tyres and the
+  roof highlight are baked into a vertex-colour *multiplier* so they survive per-instance
+  body colouring without a second material. Instanced low-poly street trees and building
+  masses fill the blocks between roads, placed by a seeded scatter (see `scatter.ts`) that
+  rejects anything within 14 m of a lane or intersection — two extra static draw calls.
+- **Mean wait** — a stat chip reads `cumulative_delay / (throughput + active_vehicles)` at
+  the playhead, with its change over the trailing 60 s of sim time (green falling, red
+  rising). In compare mode each side gets a chip plus a `B vs A` percentage chip on the
+  divider. Updates at 4 Hz and follows the scrubber.
 - **Overlays** (side panel, each independently toggleable, all reading the current
   interpolated frame): queue heatmap quads that grow upstream from each stop line with
   count labels, per-intersection phase-timer billboards (canvas text, ≤4 Hz redraw),
@@ -72,9 +83,20 @@ node scripts/export_gif.mjs --a <traj> [--b <traj>] [--seek 0.45] [--speed 4] \
                            [--secs 12] [--out name.gif] [--base <url>]
 # drives the app's own Export dialog, then ffmpeg two-pass palettes the webm
 # into ../results/gifs/<name>.gif (needs ffmpeg on PATH)
+
+node scripts/follow_probe.mjs [base]
+# click-to-follow regression: clicks a grid over the road area until a car is
+# picked, checks the side-panel hint, that Esc releases, and that the camera
+# actually tracks a moving vehicle during playback. Exits non-zero on failure.
+
+node scripts/closeups.mjs [outDir=../results/gifs] [base]
+# review stills: follow-cam closeup of the car model in the scenery, and the
+# mean-wait HUD in single + compare mode
 ```
 
-`scripts/_diag.mjs` is a scratch MediaRecorder debugging script, not part of the pipeline.
+`follow_probe.mjs` and `closeups.mjs` read live state through `window.trafficlabViz`
+(`followedId`, `cameraMode`, `cameraPose()`, `getView()`), a handle the engine publishes
+purely for these drivers — nothing in the app reads it.
 
 ## Architecture
 
@@ -87,15 +109,19 @@ shell — three.js objects never enter React state.
   extra pass decoding **only** tick + signals + queues + rewards + metrics of every frame
   (vehicle blocks are skipped by seeking), returning frame-major typed-array series —
   thousands of frames scan in a few milliseconds; the result is cached on the file.
-- `src/lib/series.ts` / `src/lib/ramps.ts` — pure helpers: column extraction, min-max
-  downsampling for the charts, phase-strip segmentation, time formatting, and the color
-  ramps used by overlays. Fully unit tested.
+- `src/lib/series.ts` / `src/lib/ramps.ts` / `src/lib/wait.ts` — pure helpers: column
+  extraction, min-max downsampling for the charts, phase-strip segmentation, time
+  formatting, the color ramps used by overlays, and the mean-wait / trailing-trend math
+  behind the HUD chips. Fully unit tested.
 - `src/lib/scene/` — three.js layers that know nothing about React: `buildRoads` (static
-  geometry), `VehicleLayer` (one InstancedMesh for all cars, id- or speed-based instance
-  colors, pose queries for picking/following with persistent id→index maps),
-  `SignalLayer`, and `overlays/` (queue heatmap, phase timers, pressure discs, trajectory
-  ribbons, shared canvas-texture text sprites). Overlays skip all work while hidden and
-  reuse scratch objects — no per-frame allocations in hot loops.
+  geometry), `carModel` (the shared low-poly car BufferGeometry), `VehicleLayer` (one
+  InstancedMesh for all cars, id- or speed-based instance colors, pose queries for
+  picking/following with persistent id→index maps, and an instance bounding sphere kept
+  in step with the instances so raycast picking keeps working), `scatter` + `environment`
+  (seeded scenery placement and its two instanced meshes), `SignalLayer`, and `overlays/`
+  (queue heatmap, phase timers, pressure discs, trajectory ribbons, shared canvas-texture
+  text sprites). Overlays skip all work while hidden and reuse scratch objects — no
+  per-frame allocations in hot loops.
 - `src/lib/viz/` — the runtime: `PlaybackClock` (time-based shared clock; comparison
   files with different lengths/dt stay in sync), `CameraRig` (orbit/top-down/follow, one
   pose applied to every viewport), `SceneView` (one loaded replay: scene + layers +
@@ -104,7 +130,8 @@ shell — three.js objects never enter React state.
   recording. React talks to the engine through methods and an `afterFrame` hook.
 - `src/components/` — `Viewer.tsx` (orchestrator: engine lifecycle, UI state, keyboard,
   drag-and-drop), `ControlBar` + `PhaseStrip`, `SidePanel`, `ChartsPanel`,
-  `CompareOverlay` (chips + divider), `ExportDialog`, `Toasts`. HUD-frequency values
+  `CompareOverlay` (chips + divider), `WaitHud` (mean-wait chips), `ExportDialog`,
+  `Toasts`. HUD-frequency values
   (readouts, chip stats, playheads) are written straight to the DOM/canvas from
   `afterFrame` — React re-renders only on real UI interactions.
 

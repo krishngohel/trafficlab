@@ -143,6 +143,7 @@ export default function ControlBar({
         </span>
       </div>
       <div className={styles.stripRow}>
+        <span className={styles.stripLabel}>Phases</span>
         <PhaseStrip
           engine={engine}
           segments={segments}
@@ -153,6 +154,8 @@ export default function ControlBar({
         <select
           className={styles.stripSelect}
           value={selectedK}
+          disabled={disabled}
+          aria-label="Intersection shown in the phase strip"
           onChange={(e) => {
             e.currentTarget.blur();
             onSelectK(Number(e.target.value));
@@ -161,7 +164,7 @@ export default function ControlBar({
         >
           {infoA.intersectionIds.map((id, k) => (
             <option key={id} value={k}>
-              I{id}
+              Strip: I{id}
             </option>
           ))}
         </select>

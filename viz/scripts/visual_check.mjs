@@ -8,14 +8,16 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const outDir = process.argv[2] ?? "visual-check";
-const fixture = process.argv[3] ?? "stress.traj";
-const base = process.argv[4] ?? "http://localhost:3199";
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const outDir = positional[0] ?? "visual-check";
+const fixture = positional[1] ?? "stress.traj";
+const base = positional[2] ?? "http://localhost:3199";
 mkdirSync(outDir, { recursive: true });
 
+const headed = process.argv.includes("--headed");
 const browser = await chromium.launch({
-  headless: true,
-  args: ["--headless=new", "--use-angle=d3d11", "--enable-gpu",
+  headless: !headed,
+  args: [...(headed ? [] : ["--headless=new"]), "--use-angle=d3d11", "--enable-gpu",
          "--enable-unsafe-swiftshader", "--window-size=1680,980"],
 });
 const page = await browser.newPage({ viewport: { width: 1680, height: 940 } });
@@ -29,7 +31,10 @@ const shot = async (name) => {
   console.log("shot:", name);
 };
 
-await page.goto(base, { waitUntil: "networkidle" });
+// `networkidle` never settles reliably against the dev server (the HMR socket
+// stays open), so wait for the app's own landing UI instead.
+await page.goto(base, { waitUntil: "domcontentloaded" });
+await page.getByRole("button", { name: "Load grid2x2 demo" }).waitFor({ timeout: 30000 });
 await shot("00_landing");
 
 // Load fixture through the hidden primary file input.
@@ -50,7 +55,11 @@ console.log("renderer:", glInfo);
 const fpsProbe = () => page.evaluate(() => new Promise((res) => {
   let n = 0;
   const t0 = performance.now();
-  const tick = () => { n++; (performance.now() - t0 < 3000) ? requestAnimationFrame(tick) : res(n / 3); };
+  const tick = () => {
+    n++;
+    if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+    else res(n / 3);
+  };
   requestAnimationFrame(tick);
 }));
 

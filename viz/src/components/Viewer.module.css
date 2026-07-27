@@ -5,6 +5,60 @@
   color: #d6dae0;
   overflow: hidden;
   font-size: 13px;
+
+  /* One scale for every floating surface, so the panels read as one system. */
+  --surface: rgba(16, 20, 27, 0.92);
+  --surface-solid: #12161d;
+  --edge: #232b38;
+  --edge-strong: #2c3a4e;
+  --accent: #4a90d9;
+  --accent-text: #9ec7ef;
+  --ink: #d6dae0;
+  --ink-dim: #98a1ae;
+  --ink-faint: #6d7683;
+  --pos: #58c98a;
+  --neg: #e8736e;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --control-h: 28px;
+  --pad: 12px;
+}
+
+/* Shared control chrome: every button, select and swatch in the HUD. */
+.toolBtn,
+.camBtn,
+.playBtn,
+.stepBtn,
+.speed,
+.stripSelect,
+.button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--surface-solid);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-sm);
+  height: var(--control-h);
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.toolBtn:focus-visible,
+.camBtn:focus-visible,
+.playBtn:focus-visible,
+.stepBtn:focus-visible,
+.speed:focus-visible,
+.stripSelect:focus-visible,
+.button:focus-visible,
+.slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .canvasHost {
@@ -64,17 +118,14 @@
 .button {
   pointer-events: auto;
   background: #1b2330;
-  color: #d6dae0;
-  border: 1px solid #2c3a4e;
-  border-radius: 6px;
-  padding: 8px 18px;
+  height: 34px;
+  padding: 0 18px;
   font-size: 13px;
-  cursor: pointer;
-  transition: background 120ms ease;
 }
 
 .button:hover {
   background: #243042;
+  border-color: var(--accent);
 }
 
 .error {
@@ -96,27 +147,22 @@
 
 .toolbar {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: var(--pad);
+  right: var(--pad);
   display: flex;
   gap: 6px;
   z-index: 12;
 }
 
 .toolBtn {
-  background: rgba(20, 26, 36, 0.92);
+  background: var(--surface);
   color: #c3cad4;
-  border: 1px solid #2c3a4e;
-  border-radius: 6px;
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
+  backdrop-filter: blur(6px);
 }
 
 .toolBtn:hover:not(:disabled) {
   background: #243042;
+  border-color: #3d5a7a;
 }
 
 .toolBtn:disabled {
@@ -125,8 +171,9 @@
 }
 
 .toolBtnActive {
-  border-color: #4a90d9;
-  color: #9ec7ef;
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: #16202e;
 }
 
 /* --- recording indicator ---------------------------------------------------- */
@@ -219,50 +266,131 @@
 
 .chipName {
   align-self: flex-start;
-  background: rgba(20, 26, 36, 0.92);
-  border: 1px solid #2c3a4e;
-  border-radius: 5px;
-  padding: 3px 9px;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-sm);
+  padding: 4px 9px;
   font-size: 12px;
+  line-height: 1.2;
   color: #cfe0f2;
+  backdrop-filter: blur(6px);
 }
 
 .chipStats {
   align-self: flex-start;
   background: rgba(14, 18, 25, 0.85);
-  border-radius: 5px;
-  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  padding: 3px 9px;
   font-size: 11px;
+  line-height: 1.2;
   color: #8d97a5;
   font-variant-numeric: tabular-nums;
+}
+
+/* --- mean-wait stat chips --------------------------------------------------- */
+
+.waitChip {
+  position: absolute;
+  z-index: 13;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 118px;
+  padding: 7px 11px 8px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  backdrop-filter: blur(6px);
+}
+
+.waitLabel {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.waitRow {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.waitValue {
+  font-size: 19px;
+  line-height: 1.05;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8ef;
+  white-space: nowrap;
+}
+
+.waitTrend {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.waitTrend[data-tone="good"],
+.waitValue[data-tone="good"] {
+  color: var(--pos);
+}
+
+.waitTrend[data-tone="bad"],
+.waitValue[data-tone="bad"] {
+  color: var(--neg);
+}
+
+/* The verdict chip sits on the divider's left edge; give it a touch more weight. */
+.waitDelta {
+  min-width: 96px;
+  border-color: var(--edge-strong);
+}
+
+.waitDelta .waitValue {
+  font-size: 17px;
 }
 
 /* --- side panel ----------------------------------------------------------------- */
 
 .sidePanel {
   position: absolute;
-  top: 48px;
-  right: 12px;
-  width: 208px;
-  background: rgba(16, 20, 27, 0.92);
-  border: 1px solid #232b38;
-  border-radius: 8px;
-  padding: 10px 12px;
+  top: calc(var(--pad) + var(--control-h) + 8px);
+  right: var(--pad);
+  width: 216px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: var(--pad);
   z-index: 12;
   backdrop-filter: blur(6px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--pad);
   max-height: calc(100% - 320px);
   overflow-y: auto;
+}
+
+/* Sections share one rhythm: title, 8px, content; a hairline between them. */
+.panelSection + .panelSection {
+  border-top: 1px solid var(--edge);
+  padding-top: var(--pad);
 }
 
 .panelTitle {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #6d7683;
-  margin-bottom: 5px;
+  letter-spacing: 0.11em;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
 }
 
 .camRow {
@@ -272,69 +400,114 @@
 
 .camBtn {
   flex: 1;
-  background: #12161d;
-  color: #aeb6c0;
-  border: 1px solid #2c3a4e;
-  border-radius: 5px;
+  min-width: 0;
+  padding: 0 4px;
   height: 26px;
   font-size: 11px;
-  cursor: pointer;
+  color: #aeb6c0;
 }
 
 .camBtn:hover {
   background: #1d2634;
+  border-color: #3d5a7a;
 }
 
 .camBtnActive {
-  border-color: #4a90d9;
-  color: #9ec7ef;
+  border-color: var(--accent);
+  color: var(--accent-text);
   background: #16202e;
 }
 
 .followHint {
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 11px;
-  color: #6d7683;
+  line-height: 1.45;
+  color: var(--ink-faint);
 }
 
 .followActive {
-  color: #9ec7ef;
+  color: var(--accent-text);
 }
 
 .checkRow {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 2px 0;
+  gap: 9px;
+  padding: 4px 0;
   font-size: 12px;
+  line-height: 1.35;
   color: #b9c1cc;
   cursor: pointer;
   user-select: none;
+  transition: color 120ms ease;
 }
 
+.checkRow:hover {
+  color: var(--ink);
+}
+
+/* Hand-drawn checkbox: a 14px rounded square with an inked tick when on. */
 .checkRow input {
-  accent-color: #4a90d9;
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
   margin: 0;
+  border: 1px solid var(--edge-strong);
+  border-radius: 4px;
+  background: #0e131a;
+  cursor: pointer;
+  position: relative;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.checkRow:hover input {
+  border-color: #3d5a7a;
+}
+
+.checkRow input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkRow input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 3px;
+  height: 7px;
+  border: solid #0b1017;
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg);
+}
+
+.checkRow input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .checkSub {
-  padding-left: 20px;
+  padding-left: 23px;
 }
 
 /* --- control bar -------------------------------------------------------------- */
 
 .bar {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
+  left: var(--pad);
+  right: var(--pad);
+  bottom: var(--pad);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background: rgba(16, 20, 27, 0.9);
-  border: 1px solid #232b38;
-  border-radius: 8px;
-  padding: 8px 12px;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 10px var(--pad);
   z-index: 15;
   backdrop-filter: blur(6px);
 }
@@ -348,75 +521,81 @@
 .playBtn,
 .stepBtn {
   background: #1b2330;
-  color: #d6dae0;
-  border: 1px solid #2c3a4e;
-  border-radius: 6px;
   width: 34px;
-  height: 28px;
-  font-size: 12px;
-  cursor: pointer;
+  padding: 0;
   flex: 0 0 auto;
 }
 
 .stepBtn {
   width: 28px;
   font-size: 11px;
+  color: var(--ink-dim);
 }
 
 .playBtn:hover:not(:disabled),
 .stepBtn:hover:not(:disabled) {
   background: #243042;
+  border-color: #3d5a7a;
+  color: var(--ink);
 }
 
 .playBtn:disabled,
 .stepBtn:disabled,
 .speed:disabled,
-.slider:disabled {
+.slider:disabled,
+.stripSelect:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
 .speed {
-  background: #12161d;
-  color: #d6dae0;
-  border: 1px solid #2c3a4e;
-  border-radius: 6px;
-  height: 28px;
-  padding: 0 6px;
-  font-size: 12px;
+  padding: 0 4px 0 6px;
   flex: 0 0 auto;
 }
 
 .slider {
   flex: 1 1 auto;
-  accent-color: #4a90d9;
+  accent-color: var(--accent);
   min-width: 60px;
+  height: var(--control-h);
 }
 
 .counter {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  color: #9aa3af;
+  color: var(--ink-dim);
   flex: 0 0 auto;
-  min-width: 150px;
+  min-width: 158px;
   text-align: right;
   white-space: nowrap;
 }
 
 .label {
   font-size: 12px;
-  color: #6d7683;
+  color: var(--ink-faint);
   flex: 0 0 auto;
-  max-width: 220px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-left: 4px;
+  border-left: 1px solid var(--edge);
+  line-height: 1.4;
 }
 
 .stripRow {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.stripLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--ink-faint);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .stripCanvas {
@@ -428,12 +607,10 @@
 }
 
 .stripSelect {
-  background: #12161d;
-  color: #aeb6c0;
-  border: 1px solid #2c3a4e;
-  border-radius: 5px;
-  height: 20px;
+  height: 22px;
+  padding: 0 2px 0 6px;
   font-size: 11px;
+  color: #aeb6c0;
   flex: 0 0 auto;
 }
 
