@@ -1,0 +1,21 @@
+{
+  "base": {
+    "algo": "ippo",
+    "network": "single",
+    "demand": "rush",
+    "reward": "pressure",
+    "total_steps": 20000,
+    "episode_seconds": 1200.0,
+    "eval_every": 4000,
+    "eval_episodes": 2,
+    "gamma": 0.97,
+    "lr": 0.0003,
+    "seed": 0,
+    "algo_kwargs": {"reward_scale": 0.02}
+  },
+  "grid": {
+    "algo_kwargs.entropy_coef": [0.01, 0.03],
+    "reward": ["pressure", "queue"],
+    "seed": [0, 1]
+  }
+}

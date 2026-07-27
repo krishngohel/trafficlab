@@ -99,6 +99,9 @@ class Trainer:
 
         self.buffers = {a: ReplayBuffer(self.buffer_size, self.obs_dim)
                         for a in self.agents}
+        # Same rationale as ppo.py: keep TD targets O(1) so Huber stays in its
+        # quadratic regime and Q-init bias washes out quickly.
+        self.reward_scale = float(kw.get("reward_scale", 1.0))
         self.rng = np.random.default_rng(cfg.seed)
         self.env_steps = 0          # env decision steps seen (drives epsilon)
 
@@ -138,7 +141,8 @@ class Trainer:
         eps = self.epsilon()
         for a in self.agents:
             next_mask = self._padded_mask(a, next_infos[a]["action_mask"])
-            self.buffers[a].add(obs[a], int(actions[a]), float(rewards[a]),
+            self.buffers[a].add(obs[a], int(actions[a]),
+                                float(rewards[a]) * self.reward_scale,
                                 next_obs[a], next_mask, bool(truncated))
         losses = [self._update(a) for a in self.agents
                   if len(self.buffers[a]) >= self.warmup]

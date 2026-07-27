@@ -83,6 +83,10 @@ class Trainer:
         self.entropy_coef = float(kw.get("entropy_coef", ENTROPY_COEF))
         self.value_coef = float(kw.get("value_coef", VALUE_COEF))
         self.grad_clip = float(kw.get("grad_clip", GRAD_CLIP))
+        # Traffic rewards are O(10..100); unscaled they blow up the value loss,
+        # whose gradients wreck the shared trunk (measured: value_loss ~4.5e5,
+        # policy collapse to a constant action). Scale to O(1).
+        self.reward_scale = float(kw.get("reward_scale", 1.0))
 
         self.agents = self._agent_order(env)
         self.obs_dim = int(env.obs_dim)
@@ -149,7 +153,8 @@ class Trainer:
         mask_np = mask.numpy()
         for i, a in enumerate(self.agents):
             self.buffers[a].add(obs_mat[i], mask_np[i], int(acts[i]), float(logp[i]),
-                                float(values[i]), float(rewards[a]), bool(truncated))
+                                float(values[i]),
+                                float(rewards[a]) * self.reward_scale, bool(truncated))
         self.env_steps += 1
         self._cache = None
         if not self.buffers[self.agents[0]].full:

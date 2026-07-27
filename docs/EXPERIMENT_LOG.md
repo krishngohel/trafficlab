@@ -41,4 +41,39 @@ not reward frantic switching.
 {pressure, queue} × seeds {0, 1}, 20k decision steps (~83 episodes of 1200 s),
 γ = 0.97, evals every 4k steps (greedy, 2 episodes, seeds 10000+).
 
+**Results.** Uniform catastrophic collapse. Every config — both lrs, both rewards,
+both seeds — converged to a *byte-identical* greedy policy (evals literally equal:
+total_delay 116,916, throughput 304 on the shared eval seeds), i.e. "hold phase 0
+forever". Baselines on the same eval episodes: fixed 70,574 / max-pressure 73,947 /
+actuated 68,049 total delay with ~620–660 departed. The learned policy was ~65%
+worse than never thinking at all.
+
+**Analysis.** Training metrics told the story precisely:
+
+| metric | value over updates 1→7 |
+|---|---|
+| value_loss | ~456,000 → ~425,000 (barely moving) |
+| policy_loss | ≈ −0.001 (nothing) |
+| clip_frac | 0–5% |
+| entropy | 0.56 → 0.49 (already collapsed at first update; ln 4 ≈ 1.39 at init) |
+
+Unscaled pressure rewards are O(−30..−80) per step; discounted returns are O(−10³).
+Against a zero-initialized value head, value_loss ≈ 4.5·10⁵, and since ActorCritic
+shares its [128,128] trunk, the value-loss gradients bulldoze the policy features
+before the (tiny) policy gradient does anything. The policy collapses to a constant
+within the first rollout and never recovers. A separate confound: this sweep
+straddled the M2 engine-fix commits, so its absolute numbers are not comparable
+with anything later — treated strictly as calibration.
+
+**Adjustment.** Added `algo_kwargs.reward_scale` to ppo/gat/dqn (multiply rewards
+at buffer insertion). Iteration 2 trains on the frozen engine with rewards scaled
+to O(1) (scale 0.02 ≈ 1/50th) and probes entropy_coef {0.01, 0.03} as insurance
+against renewed collapse.
+
+## Iteration 2 — reward scaling on the frozen engine
+
+**Setup.** `configs/sweeps/iter2_ippo_scaled.json`: IPPO single/rush,
+reward_scale 0.02, entropy_coef {0.01, 0.03} × reward {pressure, queue} ×
+seeds {0, 1}, lr 3e-4, 20k steps, evals every 4k.
+
 **Results.** _(pending — sweep running)_
