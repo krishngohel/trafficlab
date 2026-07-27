@@ -126,4 +126,38 @@ space much harder early on), both single/rush, di=10, pressure, seeds {0, 1}.
 **Setup.** `configs/sweeps/iter4_long_single.json` (IPPO 100k, entropy 0.02) +
 `configs/sweeps/iter4_dqn_single.json` (DQN 60k, warmup 2000, target sync 500).
 
+**Results.** IPPO flat at the hold-attractor through 60k of 100k steps at every
+eval (both seeds); run stopped early, DQN pair superseded by iteration 5.
+Iteration 3's single breakaway did not reproduce with entropy 0.02 — treated as
+seed luck.
+
+**Analysis.** A falsification probe killed the leading theory. Suspected: rewards
+are blind past the 100 m queue window, so saturation flattens the objective.
+Measured (scripted hold vs 20 s-cycle policies, single/rush, di=10):
+
+| reward | hold | cycle | separation |
+|---|---|---|---|
+| pressure | −75.0/step | −61.0/step | 14.0 |
+| queue | −73.9/step | −47.9/step | **25.9** |
+| throughput | +2.85/step | +5.63/step | 2.0× |
+| wait | −735/step | −479/step | 256 |
+
+Every variant separates cleanly — the signal exists (cycle: 85,591 delay / 667
+departed vs hold: 110,466 / 337). The failure is *credit assignment noise*:
+per-decision advantages are tiny against strongly autocorrelated queue dynamics,
+and γ=0.97 at 10 s steps smears credit over ~33 decisions. Also queue separates
+2× better than pressure (its earlier "dead end" verdict was confounded by the
+broken value scale of iterations 1–2).
+
+**Adjustment.** Iteration 5, full factorial: γ **0.9** (sharpen credit to ~10
+decisions), rollout 512 (halve advantage variance), entropy 0.02, reward
+{pressure, queue} × algo {IPPO, double-DQN} × seeds {0, 1}, 60k steps. DQN enters
+because off-policy TD with per-action Q-values plus epsilon exploration is
+structurally better suited to sparse-ish switching decisions (and dominates the
+traffic-signal literature).
+
+## Iteration 5 — γ 0.9 factorial: algo × reward
+
+**Setup.** `configs/sweeps/iter5_factorial.json` (8 runs).
+
 **Results.** _(pending — running)_
