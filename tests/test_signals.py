@@ -91,13 +91,28 @@ def test_request_before_min_green_queued_fires_at_min_green():
     assert unit.traj_time_in_phase == 0.0
 
 
-def test_request_current_phase_noop():
+def test_request_current_phase_causes_no_transition():
+    # With nothing queued, re-requesting the current phase never transitions.
     unit = SignalUnit(make_ix(), dt=DT)
     for _ in range(20):
         unit.step()
     assert unit.can_switch()
     unit.request_phase(0)
     for _ in range(50):
+        unit.step()
+        assert (unit.phase, unit.state) == (0, GREEN)
+
+
+def test_request_current_phase_cancels_queued_request():
+    # A queued switch (requested before min_green) is CANCELLED by a later
+    # re-request of the current phase: the stale request must never fire.
+    unit = SignalUnit(make_ix(), dt=DT)
+    for _ in range(4):                  # 2.0 s of green, min_green = 6.0 s
+        unit.step()
+    assert not unit.can_switch()
+    unit.request_phase(1)               # queued (min_green not yet elapsed)
+    unit.request_phase(0)               # controller now says "stay": cancel it
+    for _ in range(50):                 # steps well past min_green
         unit.step()
         assert (unit.phase, unit.state) == (0, GREEN)
 

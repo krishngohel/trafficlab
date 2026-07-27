@@ -1,0 +1,5 @@
+network,demand,policy,seed,spawned,throughput,total_delay,delay_per_vehicle,mean_queue
+single,light,fixed,0,1171,1148,37173.7,31.75,6.37
+single,light,fixed,1,1143,1119,37943.4,33.2,6.64
+single,light,dqn:smoke_dqn,0,1171,1115,109908.3,93.86,27.09
+single,light,dqn:smoke_dqn,1,1131,1066,108918.8,96.3,26.92

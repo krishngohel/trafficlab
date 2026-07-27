@@ -35,19 +35,27 @@ def webster_greens(sim: Simulator, ix_id: int) -> list[float]:
     base = float(demand_cfg.get("base_rate", 500.0)) * _mean_profile_multiplier(demand_cfg)
     turning = demand_cfg.get("turning", {"left": 0.2, "through": 0.65, "right": 0.15})
 
+    # Connections serving each (link, movement) across the whole intersection —
+    # a movement's flow splits evenly over the lanes that serve it.
+    serving: dict[tuple[int, str], int] = {}
+    for conn in net.connections.values():
+        if conn.intersection != ix_id:
+            continue
+        key = (net.lanes[conn.from_lane].link, conn.movement)
+        serving[key] = serving.get(key, 0) + 1
+
     ys: list[float] = []
     for phase in ix.phases:
-        y_phase = 0.0
-        # Group phase connections by (from-link, movement).
-        flows: dict[tuple[int, str], int] = {}
+        # Critical flow ratio must aggregate per PHYSICAL lane: in 2-lane
+        # configs through and right depart from the same lane, so that lane
+        # carries the sum of both movements' flows.
+        lane_flow: dict[int, float] = {}
         for cid in phase.connections:
             conn = net.connections[cid]
-            link = net.lanes[conn.from_lane].link
-            flows[(link, conn.movement)] = flows.get((link, conn.movement), 0) + 1
-        for (link, movement), n_lanes in sorted(flows.items()):
-            flow = base * float(turning.get(movement, 0.2))
-            y_phase = max(y_phase, flow / (SATURATION_FLOW * n_lanes))
-        ys.append(y_phase)
+            key = (net.lanes[conn.from_lane].link, conn.movement)
+            flow = base * float(turning.get(conn.movement, 0.2)) / serving[key]
+            lane_flow[conn.from_lane] = lane_flow.get(conn.from_lane, 0.0) + flow
+        ys.append(max(lane_flow.values()) / SATURATION_FLOW if lane_flow else 0.0)
 
     lost = len(ix.phases) * (ix.yellow + ix.all_red)
     y_total = min(sum(ys), 0.85)

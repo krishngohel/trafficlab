@@ -7,6 +7,7 @@ Generator passed in; entry links are always visited sorted by id.
 """
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -25,8 +26,15 @@ class Demand:
         self.network = network
         self.rng = rng
         self.base_rate = float(cfg.get("base_rate", 0.0))
+        if not math.isfinite(self.base_rate) or self.base_rate < 0.0:
+            raise ValueError(f"base_rate must be finite and >= 0, got {self.base_rate}")
         self.turning: dict[str, float] = dict(cfg.get("turning") or {})
         per_entry = cfg.get("per_entry") or {}
+        for key, value in per_entry.items():
+            v = float(value)
+            if not math.isfinite(v) or v < 0.0:
+                raise ValueError(
+                    f"per_entry rate for link {key!r} must be finite and >= 0, got {v}")
 
         groups: dict[int, list[int]] = {}
         for lane_id in network.entry_lanes:
@@ -42,6 +50,10 @@ class Demand:
         profile = cfg.get("profile")
         if profile:
             pts = sorted((float(t), float(m)) for t, m in profile)
+            for t, m in pts:
+                if not math.isfinite(m) or m < 0.0:
+                    raise ValueError(
+                        f"profile multiplier at point [{t}, {m}] must be finite and >= 0")
             self._prof_t: np.ndarray | None = np.asarray([p[0] for p in pts])
             self._prof_m: np.ndarray | None = np.asarray([p[1] for p in pts])
         else:

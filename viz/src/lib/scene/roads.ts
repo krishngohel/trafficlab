@@ -58,6 +58,90 @@ export function networkBounds(meta: TrajMeta): NetworkBounds {
   };
 }
 
+/**
+ * Radius of each intersection node's paved disc: distance from the node to
+ * the nearest endpoint of every lane on links touching it, plus half a lane
+ * width. Keyed by node id. Shared by road building and the pressure overlay.
+ */
+export function intersectionRadii(meta: TrajMeta): Map<number, number> {
+  const laneById = new Map(meta.network.lanes.map((l) => [l.id, l]));
+  const radii = new Map<number, number>();
+  for (const node of meta.network.nodes) {
+    if (node.type !== "intersection") continue;
+    let radius = 0;
+    for (const link of meta.network.links) {
+      if (link.from_node !== node.id && link.to_node !== node.id) continue;
+      for (const laneId of link.lanes) {
+        const lane = laneById.get(laneId);
+        if (!lane || lane.polyline.length === 0) continue;
+        const first = lane.polyline[0];
+        const last = lane.polyline[lane.polyline.length - 1];
+        const dNear = Math.min(
+          Math.hypot(first[0] - node.x, first[1] - node.y),
+          Math.hypot(last[0] - node.x, last[1] - node.y),
+        );
+        radius = Math.max(radius, dNear + lane.width / 2);
+      }
+    }
+    radii.set(node.id, radius > 0 ? radius : 8);
+  }
+  return radii;
+}
+
+/** Sim-space stop-line anchor for one approach (an incoming link). */
+export interface ApproachAnchor {
+  /** Stop-line center (mean of the link's lane endpoints), sim coords. */
+  x: number;
+  y: number;
+  /** Unit travel direction at the stop line (toward the intersection). */
+  dirX: number;
+  dirY: number;
+  /** Total width across the link's lanes. */
+  width: number;
+}
+
+/**
+ * One anchor per meta.approaches entry (same order as the per-frame queue
+ * array). Approaches whose link/lanes cannot be resolved get a zero anchor.
+ */
+export function approachAnchors(meta: TrajMeta): ApproachAnchor[] {
+  const linkById = new Map(meta.network.links.map((l) => [l.id, l]));
+  const laneById = new Map(meta.network.lanes.map((l) => [l.id, l]));
+  return meta.approaches.map((approach) => {
+    const link = linkById.get(approach.link);
+    let x = 0;
+    let y = 0;
+    let dirX = 1;
+    let dirY = 0;
+    let width = 0;
+    let count = 0;
+    if (link) {
+      let dx = 0;
+      let dy = 0;
+      for (const laneId of link.lanes) {
+        const lane = laneById.get(laneId);
+        if (!lane || lane.polyline.length < 2) continue;
+        const end = lane.polyline[lane.polyline.length - 1];
+        const prev = lane.polyline[lane.polyline.length - 2];
+        x += end[0];
+        y += end[1];
+        dx += end[0] - prev[0];
+        dy += end[1] - prev[1];
+        width += lane.width;
+        count++;
+      }
+      if (count > 0) {
+        x /= count;
+        y /= count;
+        const len = Math.hypot(dx, dy) || 1;
+        dirX = dx / len;
+        dirY = dy / len;
+      }
+    }
+    return { x, y, dirX, dirY, width };
+  });
+}
+
 /** Flat ribbon of the given width along a sim-space polyline, at height y. */
 function ribbonGeometry(
   polyline: [number, number][],
@@ -147,27 +231,10 @@ export function buildRoads(meta: TrajMeta): THREE.Group {
     roughness: 0.9,
     metalness: 0,
   });
-  const laneById = new Map(meta.network.lanes.map((l) => [l.id, l]));
+  const radii = intersectionRadii(meta);
   for (const node of meta.network.nodes) {
     if (node.type !== "intersection") continue;
-
-    let radius = 0;
-    for (const link of meta.network.links) {
-      if (link.from_node !== node.id && link.to_node !== node.id) continue;
-      for (const laneId of link.lanes) {
-        const lane = laneById.get(laneId);
-        if (!lane || lane.polyline.length === 0) continue;
-        const first = lane.polyline[0];
-        const last = lane.polyline[lane.polyline.length - 1];
-        const dNear = Math.min(
-          Math.hypot(first[0] - node.x, first[1] - node.y),
-          Math.hypot(last[0] - node.x, last[1] - node.y),
-        );
-        radius = Math.max(radius, dNear + lane.width / 2);
-      }
-    }
-    if (radius <= 0) radius = 8;
-
+    const radius = radii.get(node.id) ?? 8;
     const disc = new THREE.Mesh(new THREE.CircleGeometry(radius * 1.02, 48), nodeMaterial);
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(node.x, NODE_Y, -node.y);

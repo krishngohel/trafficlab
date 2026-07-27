@@ -227,6 +227,60 @@ def test_positive_lengths(name):
         assert conn.length > 0.0
 
 
+def heading_diff_deg(a: float, b: float) -> float:
+    """Absolute difference between two headings (radians), in degrees."""
+    return abs((math.degrees(a - b) + 180.0) % 360.0 - 180.0)
+
+
+def test_turn_headings_match_lane_headings_grid2x2():
+    # Tangent-intersection control points: a turn's heading at its first
+    # sampled point matches the from-lane end heading within 5 degrees, and
+    # its exit heading matches the to-lane start heading within 5 degrees.
+    net = build("grid2x2")
+    seen: set[str] = set()
+    for cid in sorted(net.connections):
+        conn = net.connections[cid]
+        if conn.movement == "through":
+            continue
+        fl, tl = net.lanes[conn.from_lane], net.lanes[conn.to_lane]
+        entry_kink = heading_diff_deg(conn.pose_at(0.0)[2], fl.pose_at(fl.length)[2])
+        exit_kink = heading_diff_deg(conn.pose_at(conn.length)[2], tl.pose_at(0.0)[2])
+        assert entry_kink < 5.0, f"conn {cid} ({conn.movement}) entry kink {entry_kink:.2f} deg"
+        assert exit_kink < 5.0, f"conn {cid} ({conn.movement}) exit kink {exit_kink:.2f} deg"
+        seen.add(conn.movement)
+    assert seen == {"left", "right"}       # both movements sampled
+
+
+def _proper_cross(p, q, r, s) -> bool:
+    """True iff segments pq and rs properly cross (touching endpoints do not count)."""
+    def orient(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    d1, d2 = orient(p, q, r), orient(p, q, s)
+    d3, d4 = orient(r, s, p), orient(r, s, q)
+    return ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))
+
+
+def test_turns_do_not_cross_own_lane_through_single():
+    # Old node-center Beziers bulged right turns leftward across the through
+    # connection leaving the same lane; the new control points must not.
+    net = build("single")
+    pairs = 0
+    for conn in net.connections.values():
+        if conn.movement == "through":
+            continue
+        for cid in net.lane_connections[conn.from_lane]:
+            through = net.connections[cid]
+            if through.movement != "through":
+                continue
+            pairs += 1
+            a, b = conn.polyline, through.polyline
+            for i in range(len(a) - 1):
+                for j in range(len(b) - 1):
+                    assert not _proper_cross(a[i], a[i + 1], b[j], b[j + 1]), \
+                        f"turn {conn.id} crosses its own lane's through {through.id}"
+    assert pairs > 0                       # rights share their from-lane with a through
+
+
 def test_lane_offset_right_of_centerline():
     net = build("single")
     # Eastbound entry lane (from W stub): right of travel = -Y; index 0 leftmost.
@@ -236,6 +290,65 @@ def test_lane_offset_right_of_centerline():
     lane0, lane1 = net.lanes[link.lanes[0]], net.lanes[link.lanes[1]]
     assert lane0.polyline[0][1] == pytest.approx(-0.5 * 3.5)
     assert lane1.polyline[0][1] == pytest.approx(-1.5 * 3.5)
+
+
+# ---------------------------------------------------------------- build validation
+
+def test_build_rejects_edge_shorter_than_boxes():
+    # span 10 m <= 9.5 m + 9.5 m box radii: lanes would silently build reversed.
+    cfg = {
+        "type": "explicit",
+        "nodes": [
+            {"id": 0, "x": 0.0, "y": 0.0, "type": "intersection"},
+            {"id": 1, "x": 10.0, "y": 0.0, "type": "intersection"},
+        ],
+        "edges": [{"from": 0, "to": 1, "lanes": 1, "two_way": True}],
+    }
+    with pytest.raises(ValueError) as exc:
+        Network.from_config(cfg)
+    msg = str(exc.value)
+    assert "node 0" in msg and "node 1" in msg          # both node ids
+    assert "10.000" in msg                              # the span
+    assert msg.count("9.500") == 2                      # both box radii
+
+
+def test_build_rejects_coincident_nodes():
+    cfg = {
+        "type": "explicit",
+        "nodes": [
+            {"id": 3, "x": 5.0, "y": 5.0, "type": "intersection"},
+            {"id": 4, "x": 5.0, "y": 5.0, "type": "boundary"},
+        ],
+        "edges": [{"from": 3, "to": 4, "lanes": 1, "two_way": False}],
+    }
+    with pytest.raises(ValueError, match=r"coincident nodes.*node 3.*node 4"):
+        Network.from_config(cfg)
+
+
+# ---------------------------------------------------------------- phase conflicts
+
+@pytest.mark.parametrize("name", CONFIG_NAMES)
+def test_shipped_configs_are_phase_conflict_free(name):
+    build(name)                            # must not raise: opposing lefts clear
+
+
+def test_diagonal_arm_same_phase_conflict_raises():
+    # Arms at 0/30/180/210 degrees: both diagonals classify onto the EW axis,
+    # so the EW phase holds through movements from different lanes that cross
+    # inside the box. The build-time conflict check must reject this.
+    def stub(i, ang):
+        return {"id": i, "x": 150.0 * math.cos(math.radians(ang)),
+                "y": 150.0 * math.sin(math.radians(ang)), "type": "boundary"}
+    cfg = {
+        "type": "explicit",
+        "nodes": [{"id": 0, "x": 0.0, "y": 0.0, "type": "intersection"},
+                  stub(1, 0.0), stub(2, 30.0), stub(3, 180.0), stub(4, 210.0)],
+        "edges": [{"from": 0, "to": i, "lanes": 1, "two_way": True}
+                  for i in range(1, 5)],
+    }
+    with pytest.raises(ValueError, match=r"phase 'EW' at intersection 0") as exc:
+        Network.from_config(cfg)
+    assert "connections" in str(exc.value)  # names the two crossing connection ids
 
 
 # ---------------------------------------------------------------- meta + determinism

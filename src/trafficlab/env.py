@@ -6,10 +6,12 @@ in-repo RL code needs. Agent ids are stringified intersection ids.
 Observation (float32): [queue×4, density×4, phase one-hot×P, time-since-change×1]
   queues normalized by 30 veh, densities by 200 veh/km, time by 60 s (capped 1).
   Approach slots beyond an intersection's actual approach count are zero.
-Action: Discrete(P) — target phase index. Illegal requests (during transitions /
-  before min-green) are safely ignored by the signal unit; infos carry
-  "action_mask" so algorithms can mask instead of learning the hard way.
-Reward variants: "pressure" (default, negative intersection pressure),
+Action: Discrete(P) — target phase index. Requests during a yellow/all-red
+  transition are dropped; a request before min-green is DEFERRED and fires when
+  min-green elapses (re-requesting the current phase cancels a deferred switch,
+  so the latest action always wins). infos carry "action_mask" so algorithms
+  can mask instead of learning the hard way.
+Reward variants: "pressure" (default, negative |intersection pressure|),
   "queue", "wait", "throughput".
 """
 from __future__ import annotations
@@ -174,7 +176,9 @@ class TrafficEnv:
         for a in self.agents:
             ix = int(a)
             if kind == "pressure":
-                r = -self.sim.intersection_pressure(ix)
+                # -|p|: signed -p would PAY the agent when downstream spillback
+                # drives pressure negative (observed on arterial6/heavy).
+                r = -abs(self.sim.intersection_pressure(ix))
             elif kind == "queue":
                 r = -float(sum(q[ai] for ai in self._approach_idx[a]))
             elif kind == "wait":

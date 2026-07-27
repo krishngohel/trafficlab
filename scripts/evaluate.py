@@ -24,6 +24,20 @@ sys.path.insert(0, str(ROOT / "src"))
 EPISODE_SECONDS = 3600.0
 BASELINES = ("fixed", "webster", "actuated", "max_pressure")
 
+# Two-sided 95% Student-t quantiles by degrees of freedom (df > 30 ~ normal).
+T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+       8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
+       14: 2.145, 15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093,
+       20: 2.086, 25: 2.060, 30: 2.042}
+
+
+def t95(df: int) -> float:
+    if df <= 0:
+        return 0.0
+    if df in T95:
+        return T95[df]
+    return min((v for k, v in T95.items() if k >= df), default=1.96) if df < 30 else 1.96
+
 
 def eval_baseline(network: str, demand: str, policy: str, seed: int,
                   record: str | None) -> dict:
@@ -43,7 +57,7 @@ def eval_baseline(network: str, demand: str, policy: str, seed: int,
         for c in controllers:
             c.step()
         sim.step()
-        if tk % 10 == 0:
+        if (tk + 1) % 10 == 0:      # decision boundaries, matching the RL path
             queue_sum += float(sim.queues_by_approach().sum())
             samples += 1
     out = _row(network, demand, policy, seed, sim, queue_sum / max(samples, 1))
@@ -52,11 +66,15 @@ def eval_baseline(network: str, demand: str, policy: str, seed: int,
 
 
 def eval_rl(network: str, demand: str, run_dir: str, seed: int,
-            record: str | None) -> dict:
+            record: str | None) -> dict | None:
     import torch
     from trafficlab.env import make_env
     run = Path(run_dir)
     cfg_dict = json.loads((run / "config.json").read_text())
+    if cfg_dict.get("network") and cfg_dict["network"] != network:
+        # Policies are shaped by their training network (agent count, obs dim);
+        # cross-network evaluation would crash or silently mislead.
+        return None
     from trafficlab.rl.harness import RunConfig
     cfg = RunConfig(**{k: v for k, v in cfg_dict.items()
                        if k in RunConfig.__dataclass_fields__})
@@ -66,7 +84,9 @@ def eval_rl(network: str, demand: str, run_dir: str, seed: int,
                    episode_seconds=EPISODE_SECONDS)
     trainer = importlib.import_module(f"trafficlab.rl.{cfg.algo}").Trainer(cfg, env)
     ckpt = torch.load(run / "ckpt_latest.pt", map_location="cpu", weights_only=False)
-    trainer.load_state_dict(ckpt["model"] if "model" in ckpt else ckpt)
+    # Harness checkpoints keep the full trainer state under extra.trainer
+    # (the top-level "model" key is the bare net dict or None).
+    trainer.load_state_dict(ckpt["extra"]["trainer"] if "extra" in ckpt else ckpt)
     if record:
         env.record_next_episode(record, policy_label=policy_name)
     obs, infos = env.reset(seed=seed)
@@ -127,13 +147,20 @@ def main() -> None:
                            if args.record_dir and seed == 0 else None)
                     jobs.append(("rl", network, demand, run_dir, seed, rec))
 
+    if not jobs:
+        print("nothing to evaluate (empty policy/run selection)")
+        return
     print(f"{len(jobs)} evaluation episodes on {args.processes} processes...")
     rows = []
     with ProcessPoolExecutor(max_workers=args.processes) as pool:
         for i, row in enumerate(pool.map(_run_cell, jobs)):
-            rows.append(row)
+            if row is not None:     # None = RL run skipped on a foreign network
+                rows.append(row)
             if (i + 1) % 10 == 0:
                 print(f"  {i + 1}/{len(jobs)}")
+    if not rows:
+        print("all cells were skipped")
+        return
 
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -153,8 +180,9 @@ def main() -> None:
         rs = cells[key]
         d = np.array([r["delay_per_vehicle"] for r in rs], dtype=float)
         t = np.array([r["throughput"] for r in rs], dtype=float)
-        ci_d = 1.96 * d.std(ddof=1) / max(len(d), 2) ** 0.5 if len(d) > 1 else 0.0
-        ci_t = 1.96 * t.std(ddof=1) / max(len(t), 2) ** 0.5 if len(t) > 1 else 0.0
+        q = t95(len(d) - 1)
+        ci_d = q * d.std(ddof=1) / len(d) ** 0.5 if len(d) > 1 else 0.0
+        ci_t = q * t.std(ddof=1) / len(t) ** 0.5 if len(t) > 1 else 0.0
         print(f"{key[0]:10s} {key[1]:7s} {key[2]:28s} {d.mean():8.1f} ± {ci_d:5.1f} "
               f"{t.mean():9.0f} ± {ci_t:4.0f}")
 

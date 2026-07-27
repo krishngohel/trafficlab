@@ -26,6 +26,9 @@ DEFAULT_SPEED = 13.9
 DEFAULT_YELLOW, DEFAULT_ALL_RED, DEFAULT_MIN_GREEN = 3.0, 2.0, 6.0
 BOX_BASE, BOX_PER_LANE = 6.0, 3.5
 BEZIER_SAMPLES = 12
+TANGENT_PARALLEL_EPS = 0.15     # |cross of unit tangents| below this: chord-midpoint fallback
+CONFLICT_SAMPLES = 24           # polyline resampling for phase-conflict checking
+MERGE_EXCLUSION = 4.0           # m around polyline end points where crossings are legal merges
 COMPASS_LABELS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 PHASE_ORDER = ("NS", "NS-L", "EW", "EW-L")
 
@@ -113,6 +116,79 @@ class Intersection:
     yellow: float
     all_red: float
     min_green: float
+
+
+def _turn_control_point(from_poly: np.ndarray, to_poly: np.ndarray) -> np.ndarray:
+    """Bezier control point for a turn connection: the intersection of the
+    from-lane's exit tangent line and the to-lane's entry tangent line (the
+    last/first polyline segments extended). Keeps the connection heading
+    continuous with both lanes at the endpoints. Near-parallel tangents
+    (|cross of unit tangents| < TANGENT_PARALLEL_EPS) fall back to the chord
+    midpoint."""
+    p0, p2 = from_poly[-1], to_poly[0]
+    d0 = from_poly[-1] - from_poly[-2]
+    d1 = to_poly[1] - to_poly[0]
+    u0 = d0 / math.hypot(float(d0[0]), float(d0[1]))
+    u1 = d1 / math.hypot(float(d1[0]), float(d1[1]))
+    cross = float(u0[0] * u1[1] - u0[1] * u1[0])
+    if abs(cross) < TANGENT_PARALLEL_EPS:
+        return 0.5 * (p0 + p2)
+    s = (float(p2[0] - p0[0]) * float(u1[1]) - float(p2[1] - p0[1]) * float(u1[0])) / cross
+    return p0 + s * u0
+
+
+def _resample(polyline: np.ndarray, cum: np.ndarray, n: int) -> np.ndarray:
+    """n points evenly spaced by arc length along the polyline."""
+    s = np.linspace(0.0, float(cum[-1]), n)
+    return np.column_stack([np.interp(s, cum, polyline[:, 0]),
+                            np.interp(s, cum, polyline[:, 1])])
+
+
+def _polylines_cross(pa: np.ndarray, pb: np.ndarray,
+                     end_clear: float) -> tuple[float, float] | None:
+    """First crossing point between segments of pa and pb, ignoring crossings
+    within end_clear of either polyline's final point (legal merges); None if
+    the polylines do not cross. Parallel/collinear segment pairs never count."""
+    a0, a1 = pa[:-1, None, :], pa[1:, None, :]
+    b0, b1 = pb[None, :-1, :], pb[None, 1:, :]
+    r, s, qp = a1 - a0, b1 - b0, b0 - a0
+    denom = r[..., 0] * s[..., 1] - r[..., 1] * s[..., 0]
+    ok = np.abs(denom) > 1e-12
+    safe = np.where(ok, denom, 1.0)
+    t = (qp[..., 0] * s[..., 1] - qp[..., 1] * s[..., 0]) / safe
+    u = (qp[..., 0] * r[..., 1] - qp[..., 1] * r[..., 0]) / safe
+    hit = ok & (t >= 0.0) & (t <= 1.0) & (u >= 0.0) & (u <= 1.0)
+    if not hit.any():
+        return None
+    px = a0[..., 0] + t * r[..., 0]
+    py = a0[..., 1] + t * r[..., 1]
+    hit &= np.hypot(px - pa[-1, 0], py - pa[-1, 1]) >= end_clear
+    hit &= np.hypot(px - pb[-1, 0], py - pb[-1, 1]) >= end_clear
+    if not hit.any():
+        return None
+    i, j = np.argwhere(hit)[0]
+    return float(px[i, j]), float(py[i, j])
+
+
+def _check_phase_conflicts(intersections: dict[int, Intersection],
+                           connections: dict[int, Connection]) -> None:
+    """Raise ValueError if two connections of the same phase with different
+    from_lanes geometrically cross (merges into a shared to_lane at the end
+    of the polylines are legal and excluded)."""
+    for ix_id in sorted(intersections):
+        for phase in intersections[ix_id].phases:
+            conns = [connections[c] for c in phase.connections]
+            samples = [_resample(c.polyline, c.arclengths, CONFLICT_SAMPLES) for c in conns]
+            for i in range(len(conns)):
+                for j in range(i + 1, len(conns)):
+                    if conns[i].from_lane == conns[j].from_lane:
+                        continue
+                    pt = _polylines_cross(samples[i], samples[j], MERGE_EXCLUSION)
+                    if pt is not None:
+                        raise ValueError(
+                            f"conflicting movements in phase {phase.name!r} at "
+                            f"intersection {ix_id}: connections {conns[i].id} and "
+                            f"{conns[j].id} cross at ({pt[0]:.1f}, {pt[1]:.1f})")
 
 
 def _bearing(dx: float, dy: float) -> float:
@@ -294,6 +370,14 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
     for link_id, (a, b, nl, sl) in enumerate(specs):
         na, nb = nodes[a], nodes[b]
         span = math.hypot(nb.x - na.x, nb.y - na.y)
+        if span < 1e-9:
+            raise ValueError(
+                f"coincident nodes: edge from node {a} to node {b} spans zero distance")
+        if span <= box[a] + box[b]:
+            raise ValueError(
+                f"edge from node {a} to node {b} is too short: node span {span:.3f} m "
+                f"must exceed the sum of intersection box radii "
+                f"{box[a]:.3f} m (node {a}) + {box[b]:.3f} m (node {b})")
         ux, uy = (nb.x - na.x) / span, (nb.y - na.y) / span
         rx, ry = uy, -ux                                # perpendicular-right of travel
         sx, sy = na.x + ux * box[a], na.y + uy * box[a]  # cut back to box edges
@@ -344,7 +428,7 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
                         poly = np.array([p0, p2], dtype=np.float64)
                     else:
                         t = np.linspace(0.0, 1.0, BEZIER_SAMPLES)[:, None]
-                        p1 = np.array([node.x, node.y], dtype=np.float64)
+                        p1 = _turn_control_point(fl.polyline, tl.polyline)
                         poly = (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t ** 2 * p2
                     connections[conn_id] = Connection(conn_id, fl.id, tl.id, movement, ix_id, poly)
                     groups[axis + ("-L" if movement == "left" else "")].append(conn_id)
@@ -352,4 +436,5 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
         phases = [Phase(name, tuple(sorted(groups[name])))
                   for name in PHASE_ORDER if groups[name]]
         intersections[ix_id] = Intersection(ix_id, nid, phases, yellow, all_red, min_green)
+    _check_phase_conflicts(intersections, connections)
     return nodes, links, lanes, connections, intersections

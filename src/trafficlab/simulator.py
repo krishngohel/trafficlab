@@ -573,9 +573,24 @@ class Simulator:
                          for ph in ix.phases], dtype=np.float64)
 
     def intersection_pressure(self, ix_id: int) -> float:
+        """Sum of upstream movement demand minus downstream occupancy.
+
+        Downstream is counted once per unique exit lane (several connections
+        can share a to_lane; per-connection subtraction would double-count)."""
         conns = sorted(c for c, conn in self.net.connections.items()
                        if conn.intersection == ix_id)
-        return float(sum(self.movement_pressure(c) for c in conns))
+        up = 0.0
+        down_lanes: set[int] = set()
+        for c in conns:
+            conn = self.net.connections[c]
+            down_lanes.add(conn.to_lane)
+            # movement_pressure minus its own downstream term = upstream part.
+            down_c = sum(1 for v in self._occ_list(ON_LANE, conn.to_lane)
+                         if v.s <= QUEUE_DIST)
+            up += self.movement_pressure(c) + down_c
+        down = sum(sum(1 for v in self._occ_list(ON_LANE, l) if v.s <= QUEUE_DIST)
+                   for l in sorted(down_lanes))
+        return float(up - down)
 
     def default_rewards(self) -> np.ndarray:
         return np.array([-self.intersection_pressure(ix) for ix in sorted(self.net.intersections)],

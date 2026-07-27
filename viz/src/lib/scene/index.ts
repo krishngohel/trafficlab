@@ -1,4 +1,10 @@
-export { buildRoads, disposeGroup, networkBounds } from "./roads";
-export type { NetworkBounds } from "./roads";
+export { approachAnchors, buildRoads, disposeGroup, intersectionRadii, networkBounds } from "./roads";
+export type { ApproachAnchor, NetworkBounds } from "./roads";
 export { VehicleLayer, lerpAngle } from "./vehicles";
+export type { VehicleColorMode, VehiclePose } from "./vehicles";
 export { SignalLayer } from "./signals";
+export { QueueHeatmapLayer } from "./overlays/queueHeatmap";
+export { PhaseTimerLayer } from "./overlays/phaseTimers";
+export { PressureLayer } from "./overlays/pressure";
+export { RibbonLayer } from "./overlays/ribbons";
+export { TextSprite } from "./overlays/textSprite";

@@ -22,8 +22,10 @@ class SignalUnit:
 
     GREEN -> (request) -> YELLOW (yellow s) -> ALL_RED (all_red s) -> GREEN(new).
     Requests during a transition are ignored; a request before min_green has
-    elapsed is queued and honored when it elapses. Requesting the current
-    phase is a no-op. All transitions happen inside step().
+    elapsed is queued and honored when it elapses. Re-requesting the current
+    phase while GREEN cancels any queued pending switch (so a controller's
+    latest request is always the one that fires — a stale queued request never
+    fires after a later "stay" decision). All transitions happen inside step().
     """
 
     def __init__(self, ix: Intersection, dt: float, initial_phase: int = 0):
@@ -59,7 +61,10 @@ class SignalUnit:
     def request_phase(self, p: int) -> None:
         if not 0 <= p < len(self._phase_conns):
             raise ValueError(f"phase {p} out of range")
-        if self.state != GREEN or p == self.phase:
+        if self.state != GREEN:
+            return
+        if p == self.phase:
+            self._pending = None    # re-request of current phase cancels a queued switch
             return
         self._pending = p
 

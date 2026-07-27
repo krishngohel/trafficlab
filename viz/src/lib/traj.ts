@@ -143,11 +143,47 @@ export interface TrajFrame {
   metrics: Float32Array;
 }
 
+/**
+ * Per-frame series of everything EXCEPT vehicles, produced by a single fast
+ * pass over the file (`scanMeta`). All arrays are frame-major:
+ * `signalState[i * K + k]`, `queues[i * A + a]`, `metrics[i * M + m]`.
+ */
+export interface TrajScan {
+  numFrames: number;
+  /** meta.intersections_order.length */
+  k: number;
+  /** meta.approaches.length */
+  a: number;
+  /** meta.metrics.length */
+  m: number;
+  /** Seconds of sim time per tick (copied from meta for convenience). */
+  dt: number;
+  ticks: Uint32Array;
+  /** N*K — phase index per intersection per frame. */
+  signalPhase: Uint8Array;
+  /** N*K — 0 green, 1 yellow, 2 all-red. */
+  signalState: Uint8Array;
+  /** N*K — seconds in the current phase. */
+  timeInPhase: Float32Array;
+  /** N*A — vehicles queued per approach. */
+  queues: Uint16Array;
+  /** N*K — per-intersection instantaneous reward. */
+  rewards: Float32Array;
+  /** N*M — global metrics per frame. */
+  metrics: Float32Array;
+}
+
 export interface TrajFile {
   meta: TrajMeta;
   numFrames: number;
   /** Decode frame i (lazily, LRU-cached). Throws on out-of-range i. */
   frame(i: number): TrajFrame;
+  /**
+   * Decode tick + signals + queues + rewards + metrics of EVERY frame in one
+   * pass, seeking over the vehicle blocks. Cached after the first call.
+   * Fast: a few thousand frames scan in single-digit milliseconds.
+   */
+  scanMeta(): TrajScan;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +230,7 @@ class TrajFileImpl implements TrajFile {
 
   private readonly cache = new Map<number, TrajFrame>();
   private readonly cacheSize: number;
+  private scan: TrajScan | null = null;
 
   constructor(buffer: ArrayBuffer, cacheSize: number) {
     this.cacheSize = Math.max(1, cacheSize);
@@ -335,6 +372,68 @@ class TrajFileImpl implements TrajFile {
     return frame;
   }
 
+  scanMeta(): TrajScan {
+    if (this.scan !== null) return this.scan;
+    const { view, k, a, m } = this;
+    const n = this.numFrames;
+
+    const ticks = new Uint32Array(n);
+    const signalPhase = new Uint8Array(n * k);
+    const signalState = new Uint8Array(n * k);
+    const timeInPhase = new Float32Array(n * k);
+    const queues = new Uint16Array(n * a);
+    const rewards = new Float32Array(n * k);
+    const metrics = new Float32Array(n * m);
+
+    for (let i = 0; i < n; i++) {
+      const base = this.index[i];
+      ticks[i] = view.getUint32(base + 4, true);
+      const nVeh = view.getUint32(base + 8, true);
+      // Seek past the vehicle block; everything after it is what we want.
+      let p = base + 12 + VEHICLE_RECORD_SIZE * nVeh;
+      const kBase = i * k;
+      for (let s = 0; s < k; s++) {
+        signalPhase[kBase + s] = view.getUint8(p);
+        signalState[kBase + s] = view.getUint8(p + 1);
+        timeInPhase[kBase + s] = view.getFloat32(p + 2, true);
+        p += SIGNAL_RECORD_SIZE;
+      }
+      const aBase = i * a;
+      for (let q = 0; q < a; q++) {
+        queues[aBase + q] = view.getUint16(p, true);
+        p += 2;
+      }
+      for (let r = 0; r < k; r++) {
+        rewards[kBase + r] = view.getFloat32(p, true);
+        p += 4;
+      }
+      const mBase = i * m;
+      for (let g = 0; g < m; g++) {
+        metrics[mBase + g] = view.getFloat32(p, true);
+        p += 4;
+      }
+      if (p !== (i + 1 < n ? this.index[i + 1] : this.indexOffset)) {
+        throw new TrajParseError(`traj: scan of frame ${i} did not land on the next frame boundary`);
+      }
+    }
+
+    this.scan = {
+      numFrames: n,
+      k,
+      a,
+      m,
+      dt: this.meta.dt,
+      ticks,
+      signalPhase,
+      signalState,
+      timeInPhase,
+      queues,
+      rewards,
+      metrics,
+    };
+    return this.scan;
+  }
+
   private decodeFrame(i: number): TrajFrame {
     const { view, bytes, k, a, m } = this;
     const base = this.index[i];
@@ -429,4 +528,13 @@ export function parseTraj(
   options?: { cacheSize?: number },
 ): TrajFile {
   return new TrajFileImpl(buffer, options?.cacheSize ?? DEFAULT_CACHE_SIZE);
+}
+
+/**
+ * One fast pass over `file` decoding ONLY tick + signals + queues + rewards +
+ * metrics of every frame (vehicle blocks are skipped by seeking). The result
+ * is cached on the file, so repeated calls are free.
+ */
+export function scanMeta(file: TrajFile): TrajScan {
+  return file.scanMeta();
 }

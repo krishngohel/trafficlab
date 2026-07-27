@@ -124,6 +124,23 @@ def test_arrivals_follow_sorted_link_ids():
         assert links == sorted(links)              # grouped by ascending link id
 
 
+def test_init_rejects_nan_base_rate():
+    with pytest.raises(ValueError, match="base_rate"):
+        Demand({"base_rate": float("nan")}, make_network(), np.random.default_rng(0))
+
+
+def test_init_rejects_negative_per_entry():
+    cfg = {"base_rate": 100.0, "per_entry": {"0": -5.0}}
+    with pytest.raises(ValueError, match=r"per_entry rate for link '0'.*-5\.0"):
+        Demand(cfg, make_network(), np.random.default_rng(0))
+
+
+def test_init_rejects_negative_profile_point():
+    cfg = {"base_rate": 100.0, "profile": [[0, 1.0], [60, -0.5]]}
+    with pytest.raises(ValueError, match=r"profile multiplier at point \[60\.0, -0\.5\]"):
+        Demand(cfg, make_network(), np.random.default_rng(0))
+
+
 def test_shipped_configs_load():
     root = Path(__file__).resolve().parents[1] / "configs" / "demand"
     for name, rate in (("light", 300), ("rush", 500), ("heavy", 800)):

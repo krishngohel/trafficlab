@@ -63,8 +63,18 @@ Geometry rules:
   back so they start/end at the box edge (stop line = lane end).
 - A direction's lanes are offset RIGHT of the road centerline: lane center offset
   `(i + 0.5) * width` for index i, perpendicular-right of travel.
-- Connections: through = straight segment; turns = quadratic Bezier (control point = node
-  center), sampled at 12 points.
+- Connections: through = straight segment; turns = quadratic Bezier sampled at 12 points.
+  Turn control point = intersection of the from-lane's exit tangent line and the to-lane's
+  entry tangent line (last/first polyline segments extended); if the tangents are
+  near-parallel (|cross product of unit tangents| < 0.15) fall back to the chord midpoint.
+  This keeps connection headings continuous with their lanes at both endpoints (no
+  entry/exit heading kinks, no leftward bulge on right turns).
+- Build validation: an edge whose node span is <= the sum of its endpoint intersection
+  box radii raises ValueError (lanes would build reversed), as do coincident nodes.
+  After phases are built, every same-phase pair of connections with different from_lanes
+  is checked geometrically (polylines resampled at 24 points): if they cross anywhere
+  except within 4 m of either polyline's final point (merges into a shared to_lane are
+  legal), the build raises ValueError naming the intersection, phase, and connections.
 - Movement→lane rule (per incoming link with L lanes): left turns from lane 0 only;
   right turns from lane L-1 only; through from every lane EXCEPT lane 0 when L ≥ 2
   (dedicated left) — through from lane 0 too when L == 1.
@@ -107,7 +117,10 @@ GREEN, YELLOW, ALL_RED = 0, 1, 2
 class SignalUnit:
     """Phase state machine for one intersection. GREEN → (request) → YELLOW(yellow s)
     → ALL_RED(all_red s) → GREEN(new phase). Requests during a transition are ignored;
-    requests before min_green has elapsed are queued and honored when it elapses."""
+    requests before min_green has elapsed are queued and honored when it elapses.
+    Re-requesting the CURRENT phase while GREEN cancels any queued pending switch —
+    the latest request always wins, so a stale queued request can never fire after a
+    later "stay" decision (preserves RL action → transition correspondence)."""
     def __init__(self, ix: Intersection, dt: float, initial_phase: int = 0): ...
     phase: int          # current (outgoing during transition), the value written to .traj
     state: int          # GREEN/YELLOW/ALL_RED

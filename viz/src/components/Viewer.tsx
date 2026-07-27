@@ -1,314 +1,417 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { parseTraj, type TrajFile } from "@/lib/traj";
-import { buildRoads, disposeGroup, networkBounds, SignalLayer, VehicleLayer } from "@/lib/scene";
+import { phaseSegments } from "@/lib/series";
+import {
+  VizEngine,
+  type CameraMode,
+  type OverlayToggles,
+  type SideInfo,
+} from "@/lib/viz/engine";
+import { DEFAULT_TOGGLES } from "@/lib/viz/view";
+import ChartsPanel, { buildSideSeries } from "./ChartsPanel";
+import CompareOverlay from "./CompareOverlay";
+import ControlBar from "./ControlBar";
+import ExportDialog from "./ExportDialog";
+import SidePanel from "./SidePanel";
+import Toasts, { type Toast } from "./Toasts";
 import styles from "./Viewer.module.css";
 
-const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
+type DragHint = "primary" | "compare" | null;
 
-/** Everything three.js lives here, never in React state. */
-interface World {
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  controls: OrbitControls;
-  roads: THREE.Group | null;
-  vehicles: VehicleLayer | null;
-  signals: SignalLayer | null;
-  traj: TrajFile | null;
-  /** Fractional playhead in frames: floor = frame f, frac = interpolation t. */
-  playhead: number;
-  playing: boolean;
-  speed: number;
-  scrubbing: boolean;
-  lastSignalFrame: number;
-}
-
+/**
+ * Top-level orchestrator. All three.js objects live inside VizEngine; React
+ * holds only the opaque engine handle plus low-frequency UI state. Per-frame
+ * values (playhead, readouts, chip stats) are written to the DOM through the
+ * engine's afterFrame hook, never through React state.
+ */
 export default function Viewer() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const worldRef = useRef<World | null>(null);
-  const sliderRef = useRef<HTMLInputElement>(null);
-  const counterRef = useRef<HTMLSpanElement>(null);
+  const fileARef = useRef<HTMLInputElement>(null);
+  const fileBRef = useRef<HTMLInputElement>(null);
+  const downPos = useRef<{ x: number; y: number; t: number } | null>(null);
+  const toastId = useRef(0);
 
-  const [numFrames, setNumFrames] = useState(0);
-  const [label, setLabel] = useState("");
+  const [engine, setEngine] = useState<VizEngine | null>(null);
+  const [infoA, setInfoA] = useState<SideInfo | null>(null);
+  const [infoB, setInfoB] = useState<SideInfo | null>(null);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("orbit");
+  const [followId, setFollowId] = useState<number | null>(null);
+  const [toggles, setToggles] = useState<OverlayToggles>({ ...DEFAULT_TOGGLES });
+  const [selectedK, setSelectedK] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [chartsOpen, setChartsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState(false);
+  const [dragHint, setDragHint] = useState<DragHint>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Keep the render loop's copies in sync with UI state.
-  useEffect(() => {
-    if (worldRef.current) worldRef.current.playing = playing;
-  }, [playing]);
-  useEffect(() => {
-    if (worldRef.current) worldRef.current.speed = speed;
-  }, [speed]);
+  const addToast = useCallback((text: string) => {
+    const id = ++toastId.current;
+    setToasts((t) => [...t, { id, text }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+  }, []);
 
-  // --- three.js lifecycle -------------------------------------------------
+  // --- engine lifecycle -----------------------------------------------------
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(host.clientWidth, host.clientHeight);
-    host.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0c10);
-    scene.fog = new THREE.Fog(0x0a0c10, 600, 2200);
-
-    const camera = new THREE.PerspectiveCamera(
-      50,
-      host.clientWidth / host.clientHeight,
-      0.1,
-      5000,
-    );
-    camera.position.set(90, 110, 140);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI / 2 - 0.02;
-
-    scene.add(new THREE.HemisphereLight(0x8a9bb8, 0x1a1d22, 0.9));
-    const sun = new THREE.DirectionalLight(0xfff2df, 1.6);
-    sun.position.set(120, 220, 80);
-    scene.add(sun);
-
-    const world: World = {
-      renderer,
-      scene,
-      camera,
-      controls,
-      roads: null,
-      vehicles: null,
-      signals: null,
-      traj: null,
-      playhead: 0,
-      playing: true,
-      speed: 1,
-      scrubbing: false,
-      lastSignalFrame: -1,
+    const created = new VizEngine(host);
+    created.onFollowChange = (id) => {
+      setFollowId(id);
+      setCameraMode(created.cameraMode);
     };
-    worldRef.current = world;
-
-    const onResize = () => {
-      const w = host.clientWidth;
-      const h = host.clientHeight;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
+    created.onAutoPause = () => setPlaying(false);
+    created.onRecordingChange = (rec) => {
+      setRecording(rec);
+      setPlaying(created.clock.playing);
+      setSpeed(created.clock.speed);
     };
-    const resizeObserver = new ResizeObserver(onResize);
-    resizeObserver.observe(host);
-
-    let raf = 0;
-    let lastTime = performance.now();
-    const tickLoop = (now: number) => {
-      raf = requestAnimationFrame(tickLoop);
-      const dtReal = Math.min((now - lastTime) / 1000, 0.25);
-      lastTime = now;
-
-      controls.update();
-
-      const traj = world.traj;
-      if (traj && traj.numFrames > 0) {
-        const maxF = traj.numFrames - 1;
-        if (world.playing && !world.scrubbing && maxF > 0) {
-          // 1x playback = real time: frames advance at 1/dt per second.
-          world.playhead += (dtReal * world.speed) / traj.meta.dt;
-          if (world.playhead >= maxF) world.playhead %= maxF; // loop
-        }
-        const f = Math.min(Math.max(world.playhead, 0), maxF);
-        const fa = Math.floor(f);
-        const fb = Math.min(fa + 1, maxF);
-        const t = f - fa;
-
-        const frameA = traj.frame(fa);
-        const frameB = fb !== fa ? traj.frame(fb) : null;
-        world.vehicles?.update(frameA, frameB, t);
-        if (world.signals && world.lastSignalFrame !== fa) {
-          world.signals.update(frameA);
-          world.lastSignalFrame = fa;
-        }
-
-        // HUD updates go straight to the DOM, bypassing React.
-        if (!world.scrubbing && sliderRef.current) {
-          sliderRef.current.value = String(f);
-        }
-        if (counterRef.current) {
-          counterRef.current.textContent = `frame ${fa} / ${maxF}`;
-        }
-      }
-
-      renderer.render(scene, camera);
-    };
-    raf = requestAnimationFrame(tickLoop);
-
+    created.onToast = addToast;
+    setEngine(created);
     return () => {
-      cancelAnimationFrame(raf);
-      resizeObserver.disconnect();
-      controls.dispose();
-      if (world.roads) disposeGroup(world.roads);
-      world.vehicles?.dispose();
-      world.signals?.dispose();
-      renderer.dispose();
-      host.removeChild(renderer.domElement);
-      worldRef.current = null;
+      created.dispose();
+      setEngine(null);
     };
-  }, []);
+  }, [addToast]);
 
-  // --- loading ------------------------------------------------------------
-  const loadBuffer = useCallback((buffer: ArrayBuffer, name: string) => {
-    const world = worldRef.current;
-    if (!world) return;
-    let traj: TrajFile;
-    try {
-      traj = parseTraj(buffer);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return;
-    }
-    setError(null);
-
-    // Tear down the previous replay.
-    if (world.roads) {
-      world.scene.remove(world.roads);
-      disposeGroup(world.roads);
-    }
-    if (world.vehicles) {
-      world.scene.remove(world.vehicles.mesh);
-      world.vehicles.dispose();
-    }
-    if (world.signals) {
-      world.scene.remove(world.signals.group);
-      world.signals.dispose();
-    }
-
-    world.traj = traj;
-    world.roads = buildRoads(traj.meta);
-    world.vehicles = new VehicleLayer();
-    world.signals = new SignalLayer(traj.meta);
-    world.scene.add(world.roads, world.vehicles.mesh, world.signals.group);
-    world.playhead = 0;
-    world.lastSignalFrame = -1;
-
-    // Frame the network.
-    const b = networkBounds(traj.meta);
-    const d = Math.max(b.extent * 0.9, 60);
-    world.controls.target.set(b.centerX, 0, -b.centerY);
-    world.camera.position.set(b.centerX + d * 0.55, d * 0.85, -b.centerY + d * 0.75);
-    world.controls.update();
-
-    setNumFrames(traj.numFrames);
-    setLabel(`${traj.meta.network_name} · ${traj.meta.policy} · ${name}`);
-  }, []);
-
-  const loadDemo = useCallback(() => {
-    fetch("/fixtures/synthetic.traj")
-      .then((res) => {
-        if (!res.ok) throw new Error(`demo fetch failed: HTTP ${res.status}`);
-        return res.arrayBuffer();
-      })
-      .then((buf) => loadBuffer(buf, "synthetic.traj"))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, [loadBuffer]);
-
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragActive(false);
-      const file = e.dataTransfer.files?.[0];
-      if (!file) return;
-      file
-        .arrayBuffer()
-        .then((buf) => loadBuffer(buf, file.name))
-        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  // --- loading ----------------------------------------------------------------
+  const loadPrimary = useCallback(
+    (buffer: ArrayBuffer, name: string) => {
+      if (!engine || engine.isRecording) return;
+      try {
+        const info = engine.loadPrimary(buffer, name);
+        setInfoA(info);
+        setInfoB(null);
+        setError(null);
+        setPlaying(true);
+        setSelectedK(0);
+        setCameraMode(engine.cameraMode);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     },
-    [loadBuffer],
+    [engine],
   );
 
-  // --- UI handlers ---------------------------------------------------------
-  const onScrub = (value: number) => {
-    const world = worldRef.current;
-    if (!world || !world.traj) return;
-    world.playhead = Math.min(Math.max(value, 0), world.traj.numFrames - 1);
+  const loadCompare = useCallback(
+    (buffer: ArrayBuffer, name: string) => {
+      if (!engine || engine.isRecording) return;
+      try {
+        const { info, warnings } = engine.loadCompare(buffer, name);
+        setInfoB(info);
+        setError(null);
+        warnings.forEach(addToast);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [engine, addToast],
+  );
+
+  const loadDemo = useCallback(
+    (fixture: string) => {
+      fetch(`/fixtures/${fixture}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`demo fetch failed: HTTP ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then((buf) => loadPrimary(buf, fixture))
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    },
+    [loadPrimary],
+  );
+
+  const readPicked = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    handler: (buf: ArrayBuffer, name: string) => void,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    file
+      .arrayBuffer()
+      .then((buf) => handler(buf, file.name))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
 
-  const loaded = numFrames > 0;
+  // --- playback / camera handlers ---------------------------------------------
+  const togglePlay = useCallback(() => {
+    if (!engine || engine.isRecording || !engine.getView(0)) return;
+    const next = !engine.clock.playing;
+    engine.setPlaying(next);
+    setPlaying(next);
+  }, [engine]);
+
+  const stepBy = useCallback(
+    (delta: number) => {
+      if (!engine || engine.isRecording || !engine.getView(0)) return;
+      engine.stepFrames(delta);
+      setPlaying(false);
+    },
+    [engine],
+  );
+
+  const changeSpeed = useCallback(
+    (value: number) => {
+      if (!engine || engine.isRecording) return;
+      engine.setSpeed(value);
+      setSpeed(value);
+    },
+    [engine],
+  );
+
+  const changeCamera = useCallback(
+    (mode: "orbit" | "top") => {
+      if (!engine) return;
+      engine.setCameraMode(mode);
+      setCameraMode(mode);
+    },
+    [engine],
+  );
+
+  const changeToggles = useCallback(
+    (next: OverlayToggles) => {
+      setToggles(next);
+      engine?.setToggles(next);
+    },
+    [engine],
+  );
+
+  const closeCompare = useCallback(() => {
+    engine?.closeCompare();
+    setInfoB(null);
+  }, [engine]);
+
+  const startExport = useCallback(
+    (fullFile: boolean, recSpeed: number) => {
+      setExportOpen(false);
+      const err = engine?.startRecording({ fullFile, speed: recSpeed });
+      if (err) addToast(err);
+    },
+    [engine, addToast],
+  );
+
+  // --- keyboard shortcuts -------------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case ",":
+          stepBy(-1);
+          break;
+        case ".":
+          stepBy(1);
+          break;
+        case "Escape":
+          if (exportOpen) setExportOpen(false);
+          else engine?.exitFollow();
+          break;
+        case "1":
+          changeCamera("orbit");
+          break;
+        case "2":
+          changeCamera("top");
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [engine, togglePlay, stepBy, changeCamera, exportOpen]);
+
+  // --- derived chart / strip data (stable typed arrays, cheap to memo) -----------
+  const seriesA = useMemo(
+    () => (engine && infoA ? buildSideSeries(engine.getView(0)) : null),
+    [engine, infoA],
+  );
+  const seriesB = useMemo(
+    () => (engine && infoB ? buildSideSeries(engine.getView(1)) : null),
+    [engine, infoB],
+  );
+  const segments = useMemo(() => {
+    const view = engine && infoA ? engine.getView(0) : null;
+    return view ? phaseSegments(view.scan, selectedK) : [];
+  }, [engine, infoA, selectedK]);
+
+  const duration = infoA ? Math.max(infoA.duration, infoB?.duration ?? 0) : 0;
+
+  // --- drag & drop ------------------------------------------------------------------
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragHint(null);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const toCompare = infoA !== null && e.clientX > window.innerWidth * 0.6;
+    file
+      .arrayBuffer()
+      .then((buf) => (toCompare ? loadCompare(buf, file.name) : loadPrimary(buf, file.name)))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  };
 
   return (
     <div
-      className={`${styles.root} ${dragActive ? styles.dragActive : ""}`}
+      className={`${styles.root} ${dragHint !== null ? styles.dragActive : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
-        setDragActive(true);
+        setDragHint(infoA !== null && e.clientX > window.innerWidth * 0.6 ? "compare" : "primary");
       }}
-      onDragLeave={() => setDragActive(false)}
+      onDragLeave={() => setDragHint(null)}
       onDrop={onDrop}
     >
-      <div ref={hostRef} className={styles.canvasHost} />
+      <div
+        ref={hostRef}
+        className={styles.canvasHost}
+        onPointerDown={(e) => {
+          if (e.button === 0) downPos.current = { x: e.clientX, y: e.clientY, t: performance.now() };
+        }}
+        onPointerUp={(e) => {
+          const d = downPos.current;
+          downPos.current = null;
+          if (!d || e.button !== 0 || recording) return;
+          if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || performance.now() - d.t > 400)
+            return;
+          engine?.pick(e.clientX, e.clientY);
+        }}
+      />
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {!loaded && (
+      {infoA === null && (
         <div className={styles.dropOverlay}>
           <div className={styles.dropTitle}>Drop a .traj file anywhere</div>
-          <button className={styles.button} onClick={loadDemo}>
-            Load demo
+          <div className={styles.demoRow}>
+            <button className={styles.button} onClick={() => loadDemo("synthetic.traj")}>
+              Load synthetic demo
+            </button>
+            <button className={styles.button} onClick={() => loadDemo("grid2x2_demo.traj")}>
+              Load grid2x2 demo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {dragHint === "compare" && (
+        <div className={styles.dropHalfHint} style={{ left: "60%", right: 0 }}>
+          Drop to compare (right side)
+        </div>
+      )}
+
+      {engine && infoA && (
+        <div className={styles.toolbar}>
+          <button className={styles.toolBtn} disabled={recording} onClick={() => fileARef.current?.click()}>
+            Load…
+          </button>
+          {infoB === null ? (
+            <button className={styles.toolBtn} disabled={recording} onClick={() => fileBRef.current?.click()}>
+              Compare…
+            </button>
+          ) : (
+            <button className={styles.toolBtn} disabled={recording} onClick={closeCompare}>
+              ✕ Compare
+            </button>
+          )}
+          <button className={styles.toolBtn} disabled={recording} onClick={() => setExportOpen(true)}>
+            ⏺ Export
+          </button>
+          <button
+            className={`${styles.toolBtn} ${chartsOpen ? styles.toolBtnActive : ""}`}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setChartsOpen((v) => !v);
+            }}
+          >
+            Charts
+          </button>
+          <button
+            className={`${styles.toolBtn} ${panelOpen ? styles.toolBtnActive : ""}`}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setPanelOpen((v) => !v);
+            }}
+          >
+            Panel
           </button>
         </div>
       )}
 
-      {loaded && (
-        <div className={styles.bar}>
-          <button
-            className={styles.playBtn}
-            onClick={() => setPlaying((p) => !p)}
-            title={playing ? "Pause" : "Play"}
-          >
-            {playing ? "❚❚" : "▶"}
+      {infoA && panelOpen && (
+        <SidePanel
+          cameraMode={cameraMode}
+          onCameraMode={changeCamera}
+          toggles={toggles}
+          onToggles={changeToggles}
+          followId={followId}
+        />
+      )}
+
+      {engine && infoA && infoB && <CompareOverlay engine={engine} infoA={infoA} infoB={infoB} />}
+
+      {recording && (
+        <div className={styles.recIndicator}>
+          <span className={styles.recDot} />
+          REC
+          <button className={styles.recBtn} onClick={() => engine?.stopRecording(false)}>
+            Stop &amp; save
           </button>
-          <select
-            className={styles.speed}
-            value={speed}
-            onChange={(e) => setSpeed(Number(e.target.value))}
-            title="Playback speed"
-          >
-            {SPEEDS.map((s) => (
-              <option key={s} value={s}>
-                {s}x
-              </option>
-            ))}
-          </select>
-          <input
-            ref={sliderRef}
-            className={styles.slider}
-            type="range"
-            min={0}
-            max={numFrames - 1}
-            step={0.01}
-            defaultValue={0}
-            onPointerDown={() => {
-              if (worldRef.current) worldRef.current.scrubbing = true;
-            }}
-            onPointerUp={() => {
-              if (worldRef.current) worldRef.current.scrubbing = false;
-            }}
-            onChange={(e) => onScrub(Number(e.target.value))}
-          />
-          <span ref={counterRef} className={styles.counter}>
-            frame 0 / {numFrames - 1}
-          </span>
-          <span className={styles.label}>{label}</span>
+          <button className={styles.recBtn} onClick={() => engine?.stopRecording(true)}>
+            Discard
+          </button>
         </div>
       )}
+
+      {engine && infoA && chartsOpen && seriesA !== null && (
+        <ChartsPanel engine={engine} a={seriesA} b={seriesB} duration={duration} />
+      )}
+
+      {engine && infoA && (
+        <ControlBar
+          engine={engine}
+          playing={playing}
+          speed={speed}
+          disabled={recording}
+          duration={duration}
+          infoA={infoA}
+          label={
+            infoB === null
+              ? `${infoA.networkName} · ${infoA.policy} · ${infoA.name}`
+              : `${infoA.name} vs ${infoB.name}`
+          }
+          segments={segments}
+          selectedK={selectedK}
+          onSelectK={setSelectedK}
+          onPlayPause={togglePlay}
+          onSpeed={changeSpeed}
+          onStep={stepBy}
+        />
+      )}
+
+      {exportOpen && <ExportDialog onStart={startExport} onClose={() => setExportOpen(false)} />}
+
+      <Toasts toasts={toasts} />
+
+      <input
+        ref={fileARef}
+        type="file"
+        accept=".traj"
+        hidden
+        onChange={(e) => readPicked(e, loadPrimary)}
+      />
+      <input
+        ref={fileBRef}
+        type="file"
+        accept=".traj"
+        hidden
+        onChange={(e) => readPicked(e, loadCompare)}
+      />
     </div>
   );
 }
