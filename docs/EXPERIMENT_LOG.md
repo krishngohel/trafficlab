@@ -76,4 +76,31 @@ against renewed collapse.
 reward_scale 0.02, entropy_coef {0.01, 0.03} × reward {pressure, queue} ×
 seeds {0, 1}, lr 3e-4, 20k steps, evals every 4k.
 
+**Results.** Reward scaling fixed the value pathology (value_loss 450,000 → 25–50)
+— and evals were *still* frozen at the init policy (~107k delay / 352 throughput,
+identical across steps and configs). Live probes then separated the remaining
+hypotheses cleanly:
+
+- Fresh nets with `explore=True` sample all four phases and the env responds
+  (34–36 phase changes / 120 steps) → exploration and env wiring are fine.
+- The trained checkpoint's greedy rollout is **bit-identical to the untrained
+  net's** → the update never moved the argmax.
+- Arithmetic: rollout 2048 with a single agent ⇒ 20k steps = **9 PPO updates
+  total**. Nine small steps move nothing.
+- Trainability probe (rollout 256, minibatch 128): after only 5 updates the
+  greedy policy changed at 57/60 decision points → the gradient path works; the
+  cadence was the bottleneck. (Note: entropy ≈ 0.55 is NOT evidence of collapse
+  here — ~half of all decisions are min-green-masked to a single action, which
+  drags the masked-entropy average down from ln 4 ≈ 1.39.)
+
+**Adjustment.** Iteration 3 uses rollout 256 / minibatch 128 (≈117 updates over
+30k steps) and probes decision_interval {5, 10} s — at 10 s the min-green mask
+stops forcing every other action, which should clean up credit assignment.
+
+## Iteration 3 — update cadence + decision interval
+
+**Setup.** `configs/sweeps/iter3_ippo_cadence.json`: IPPO single/rush, rollout 256,
+minibatch 128, reward_scale 0.02, entropy 0.01, lr 3e-4, 30k steps: reward
+{pressure, queue} × decision_interval {5, 10} × seeds {0, 1}.
+
 **Results.** _(pending — sweep running)_
