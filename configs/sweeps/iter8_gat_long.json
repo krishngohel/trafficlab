@@ -1,0 +1,24 @@
+{
+  "base": {
+    "algo": "gat",
+    "network": "grid2x2",
+    "demand": "rush",
+    "reward": "queue",
+    "total_steps": 150000,
+    "episode_seconds": 3600.0,
+    "decision_interval": 10.0,
+    "eval_every": 30000,
+    "eval_episodes": 2,
+    "gamma": 0.9,
+    "lr": 0.0003,
+    "seed": 0,
+    "obs_version": 2,
+    "algo_kwargs": {
+      "reward_scale": 0.02,
+      "rollout_steps": 512,
+      "minibatch": 128,
+      "entropy_coef": 0.02
+    }
+  },
+  "grid": {"seed": [0]}
+}
