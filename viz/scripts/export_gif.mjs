@@ -35,6 +35,10 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on("pageerror", (e) => console.log("pageerror:", String(e).slice(0, 200)));
+page.on("console", (m) => {
+  if (m.type() === "error" || /record|export|blob/i.test(m.text()))
+    console.log(`console[${m.type()}]:`, m.text().slice(0, 200));
+});
 
 await page.goto(base, { waitUntil: "networkidle" });
 await page.locator('input[type="file"]').first().setInputFiles(fix(fileA));
@@ -42,6 +46,15 @@ await page.waitForTimeout(2000);
 if (fileB) {
   await page.locator('input[type="file"]').nth(1).setInputFiles(fix(fileB));
   await page.waitForTimeout(1500);
+}
+// Optional: switch on overlay layers before recording (--overlays "Queue heatmap,Pressure field").
+const overlays = arg("overlays", null);
+if (overlays) {
+  for (const label of overlays.split(",")) {
+    await page.getByText(label.trim(), { exact: false }).first().click()
+      .catch(() => console.log("overlay not found:", label));
+    await page.waitForTimeout(200);
+  }
 }
 // Seek.
 await page.evaluate((frac) => {
@@ -71,6 +84,8 @@ const stopped = await page.evaluate(() => {
   return null;
 });
 console.log("stop button:", stopped ?? "NOT FOUND (waiting for range end)");
+await page.waitForTimeout(2500);
+await page.screenshot({ path: join(outDir, "post_stop_debug.png") });
 const download = await downloadP;
 const webm = join(outDir, outGif.replace(/\.gif$/, ".webm"));
 await download.saveAs(webm);
