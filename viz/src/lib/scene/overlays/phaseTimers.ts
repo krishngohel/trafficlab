@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { TrajFrame, TrajMeta } from "../../traj";
+import { networkBounds } from "../roads";
 import { TextSprite } from "./textSprite";
 
 /**
@@ -28,18 +29,23 @@ export class PhaseTimerLayer {
     this.group.name = "phaseTimers";
     this.group.visible = false;
 
+    // Scale labels with the network so they stay legible at the default fit.
+    const extent = networkBounds(meta).extent;
+    const worldWidth = THREE.MathUtils.clamp(extent * 0.062, 22, 64);
+    const height = THREE.MathUtils.clamp(extent * 0.03, 14, 30);
+
     const nodeById = new Map(meta.network.nodes.map((n) => [n.id, n]));
     const intersectionById = new Map(meta.network.intersections.map((i) => [i.id, i]));
     for (const id of meta.intersections_order) {
       const intersection = intersectionById.get(id);
       const node = intersection ? nodeById.get(intersection.node) : undefined;
       const label = new TextSprite({
-        worldWidth: 26,
+        worldWidth,
         width: 320,
         height: 72,
         font: "600 40px ui-sans-serif, system-ui, sans-serif",
       });
-      if (node) label.sprite.position.set(node.x, 17, -node.y);
+      if (node) label.sprite.position.set(node.x, height, -node.y);
       this.group.add(label.sprite);
       this.timers.push({
         label,

@@ -75,11 +75,19 @@ export class SceneView {
     this.throughputCol = traj.meta.metrics.indexOf("throughput");
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0c10);
-    this.scene.fog = new THREE.Fog(0x0a0c10, 600, 2200);
-    this.scene.add(new THREE.HemisphereLight(0x8a9bb8, 0x1a1d22, 0.9));
-    const sun = new THREE.DirectionalLight(0xfff2df, 1.6);
-    sun.position.set(120, 220, 80);
+    // Very dark desaturated blue night sky with matching linear fog whose far
+    // plane sits ~3x the network diagonal out.
+    const sky = new THREE.Color(0x0b0e14);
+    const diagonal = Math.max(
+      Math.hypot(this.bounds.maxX - this.bounds.minX, this.bounds.maxY - this.bounds.minY),
+      300,
+    );
+    this.scene.background = sky;
+    this.scene.fog = new THREE.Fog(sky, diagonal * 1.5, diagonal * 3);
+    // Cool sky dome + warm ground bounce, and one warm key light at ~45°.
+    this.scene.add(new THREE.HemisphereLight(0x93aad4, 0x30291f, 1.25));
+    const sun = new THREE.DirectionalLight(0xffe7c4, 2.5);
+    sun.position.set(0.7, 0.85, 0.45).multiplyScalar(400);
     this.scene.add(sun);
 
     this.roads = buildRoads(traj.meta);

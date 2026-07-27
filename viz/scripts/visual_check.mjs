@@ -54,9 +54,16 @@ const fpsProbe = () => page.evaluate(() => new Promise((res) => {
   requestAnimationFrame(tick);
 }));
 
-// Play.
-await page.keyboard.press("Space");
-await page.waitForTimeout(4000);
+// Seek to 55% — mid-episode has queues, platoons, and phase variety.
+// (Playback auto-starts on load; drive the React range input natively.)
+await page.evaluate(() => {
+  const slider = document.querySelector('input[type="range"]');
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  setter.call(slider, String(Number(slider.max) * 0.55));
+  slider.dispatchEvent(new Event("input", { bubbles: true }));
+  slider.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await page.waitForTimeout(2000); // let it play a couple seconds
 const fpsBare = await fpsProbe();
 console.log("fps (playing, no overlays):", fpsBare.toFixed(1));
 await shot("02_playing");

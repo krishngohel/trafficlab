@@ -44,6 +44,9 @@ export class PressureLayer {
         transparent: true,
         opacity: 0.32,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
       });
       const mesh = new THREE.Mesh(this.geometry, material);
       const baseRadius = ((intersection && radii.get(intersection.node)) || 10) * 1.7;
@@ -76,8 +79,9 @@ export class PressureLayer {
       const mag = Math.min(Math.abs(u), 1);
       pressureColor(u, this.rgb);
       disc.material.color.setRGB(this.rgb.r, this.rgb.g, this.rgb.b);
-      disc.material.opacity = 0.16 + 0.3 * mag;
-      disc.mesh.scale.setScalar(disc.baseRadius * (0.65 + 0.45 * mag) * (1 + 0.05 * pulse * mag));
+      // Alpha floor keeps small-but-nonzero rewards visible.
+      disc.material.opacity = 0.3 + 0.32 * mag;
+      disc.mesh.scale.setScalar(disc.baseRadius * (0.7 + 0.4 * mag) * (1 + 0.05 * pulse * mag));
     }
   }
 

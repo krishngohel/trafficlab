@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { queueColor, type RGB } from "../../ramps";
 import type { TrajFrame, TrajMeta } from "../../traj";
-import { approachAnchors } from "../roads";
+import { approachAnchors, networkBounds } from "../roads";
 import { TextSprite } from "./textSprite";
 
 /**
@@ -41,12 +41,21 @@ export class QueueHeatmapLayer {
     this.geometry.rotateX(-Math.PI / 2);
     this.geometry.translate(0.5, 0, 0);
 
+    // Label size follows the network extent so counts stay legible at the
+    // default camera fit.
+    const extent = networkBounds(meta).extent;
+    const labelWidth = THREE.MathUtils.clamp(extent * 0.02, 6, 16);
+    const labelHeight = THREE.MathUtils.clamp(extent * 0.013, 5, 11);
+
     const anchors = approachAnchors(meta);
     for (const anchor of anchors) {
       const material = new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.62,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
       });
       const mesh = new THREE.Mesh(this.geometry, material);
       // Local +X must point UPSTREAM (opposite travel). Sim upstream vector
@@ -58,8 +67,8 @@ export class QueueHeatmapLayer {
       mesh.visible = false;
       this.group.add(mesh);
 
-      const label = new TextSprite({ worldWidth: 7, width: 128, height: 64 });
-      label.sprite.position.set(anchor.x, 5.5, -anchor.y);
+      const label = new TextSprite({ worldWidth: labelWidth, width: 128, height: 64 });
+      label.sprite.position.set(anchor.x, labelHeight, -anchor.y);
       this.group.add(label.sprite);
 
       this.cells.push({ mesh, material, label, lastCount: -1 });

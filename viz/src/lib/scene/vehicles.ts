@@ -61,8 +61,10 @@ export class VehicleLayer {
     const geometry = new RoundedBoxGeometry(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH, 2, 0.28);
     geometry.translate(0, CAR_HEIGHT / 2 + 0.08, 0);
     const material = new THREE.MeshStandardMaterial({
-      roughness: 0.45,
-      metalness: 0.25,
+      roughness: 0.5,
+      metalness: 0.2,
+      // Emissive floor so no car ever reads as a black speck at night.
+      emissive: 0x111111,
     });
     this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.mesh.name = "vehicles";
@@ -135,7 +137,7 @@ export class VehicleLayer {
         speedColor(speed / limit, this.rgb);
         this.mesh.setColorAt(i, this.color.setRGB(this.rgb.r, this.rgb.g, this.rgb.b));
       } else {
-        this.mesh.setColorAt(i, this.color.setHSL(idHue(a.id[i]), 0.6, 0.58));
+        this.mesh.setColorAt(i, this.color.setHSL(idHue(a.id[i]), 0.85, 0.6));
       }
     }
 

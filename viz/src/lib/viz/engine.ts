@@ -84,7 +84,9 @@ export class VizEngine {
     this.host = host;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x05070a);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.25;
+    this.renderer.setClearColor(0x0b0e14);
     this.width = Math.max(host.clientWidth, 1);
     this.height = Math.max(host.clientHeight, 1);
     this.renderer.setSize(this.width, this.height);

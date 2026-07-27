@@ -62,12 +62,14 @@ export class CameraRig {
   /** Initial framing of a freshly loaded network (orbit + top-down). */
   frameNetwork(bounds: NetworkBounds): void {
     this.bounds = bounds;
-    const d = Math.max(bounds.extent * 0.9, 60);
+    // ~50° elevation, distance ≈ the network extent, so the network fills
+    // roughly 75-80% of the viewport instead of floating far away.
+    const d = Math.max(bounds.extent * 0.95, 60);
     this.orbitControls.target.set(bounds.centerX, 0, -bounds.centerY);
     this.persp.position.set(
-      bounds.centerX + d * 0.55,
-      d * 0.85,
-      -bounds.centerY + d * 0.75,
+      bounds.centerX + d * 0.37,
+      d * 0.75,
+      -bounds.centerY + d * 0.53,
     );
     this.orbitControls.update();
     this.fitTopDown();
@@ -76,7 +78,7 @@ export class CameraRig {
   private fitTopDown(): void {
     const b = this.bounds;
     if (!b) return;
-    const fit = fitOrtho(b.maxX - b.minX, b.maxY - b.minY, 1);
+    const fit = fitOrtho(b.maxX - b.minX, b.maxY - b.minY, 1, 1.08);
     this.orthoHalfH = fit.halfH;
     this.ortho.zoom = 1;
     this.ortho.position.set(b.centerX, 900, -b.centerY);
