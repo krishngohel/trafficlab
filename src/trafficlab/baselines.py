@@ -121,21 +121,33 @@ class MaxPressureController:
 
     Default period 15 s: with 6 s min-green + 5 s clearance, faster switching
     burns capacity in yellow/all-red (measured on grid2x2/rush: 205-214 s/veh
-    at period 5 vs 190-196 at period 15)."""
+    at period 5 vs 190-196 at period 15).
 
-    def __init__(self, sim: Simulator, ix_id: int, period: float = 15.0):
+    `max_green` is an anti-starvation cap: pressure can stay pinned on a phase
+    whose queue cannot discharge (e.g. head-of-line blocking), so after
+    max_green seconds of green the controller must serve the best OTHER phase
+    (measured on arterial6: without the cap, max-pressure gridlocks at ~2600
+    s/veh with 95% of time on one phase)."""
+
+    def __init__(self, sim: Simulator, ix_id: int, period: float = 15.0,
+                 max_green: float = 60.0):
         self.sim = sim
         self.ix_id = ix_id
         self.unit: SignalUnit = sim.units[ix_id]
         self.period_ticks = max(1, int(round(period / sim.dt)))
+        self.max_green = max_green
         self._t = 0
 
     def step(self) -> None:
         if self._t % self.period_ticks == 0 and self.unit.can_switch():
             pressures = self.sim.phase_pressures(self.ix_id)
-            best = int(np.argmax(pressures))
-            if pressures[best] > pressures[self.unit.phase]:
-                self.unit.request_phase(best)
+            if self.unit.traj_time_in_phase >= self.max_green and len(pressures) > 1:
+                others = [(p, i) for i, p in enumerate(pressures) if i != self.unit.phase]
+                self.unit.request_phase(max(others)[1])
+            else:
+                best = int(np.argmax(pressures))
+                if pressures[best] > pressures[self.unit.phase]:
+                    self.unit.request_phase(best)
         self._t += 1
 
 

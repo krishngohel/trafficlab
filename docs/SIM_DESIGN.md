@@ -81,6 +81,12 @@ Geometry rules:
 - Phases per 4-way intersection (skip any phase with no connections; also merge: if an
   axis has no left connections, don't emit its left phase):
   0 "NS" (N+S through+right), 1 "NS-L" (N+S lefts), 2 "EW", 3 "EW-L".
+  SPLIT PHASING exception: if any approach on an axis has a single lane AND a left
+  turn, protected-left axis phasing would head-of-line-block that lane (the lead
+  left-turner stalls the through queue during the axis phase), so that axis instead
+  gets one all-movements phase per approach, named by compass label ("N", "S" / "E",
+  "W"), emitted in sorted label order. Same-approach movements share a from_lane, so
+  split phases are conflict-free by construction.
   Defaults: yellow 3.0, all_red 2.0, min_green 6.0.
 - Node ids: as given (explicit) or row-major grid then boundary stubs. Link/lane/connection
   ids: dense ints assigned in a deterministic documented order.

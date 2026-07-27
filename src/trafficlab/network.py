@@ -398,11 +398,23 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
     for ix_id, nid in enumerate(sorted(k for k, n in nodes.items() if n.type == "intersection")):
         node = nodes[nid]
         groups: dict[str, list[int]] = {name: [] for name in PHASE_ORDER}
+        # Per-approach bookkeeping for split phasing: a single-lane approach
+        # with a left turn cannot use protected-left axis phasing (the head
+        # left-turner blocks the whole lane during the through phase), so such
+        # axes get one all-movements phase per approach instead.
+        appr: dict[str, dict] = {}
         outgoing = [links[k] for k in sorted(links) if links[k].from_node == nid]
         for in_link in _incoming_sorted(node, links, nodes):
             src = nodes[in_link.from_node]
             h_in = _heading_deg(src, node)
             axis = "NS" if abs(src.y - node.y) >= abs(src.x - node.x) else "EW"
+            dx, dy = src.x - node.x, src.y - node.y
+            if axis == "NS":
+                label = "N" if dy > 0 else "S"
+            else:
+                label = "E" if dx > 0 else "W"
+            ap = appr.setdefault(label, {"axis": axis, "conns": [], "left": False,
+                                         "lanes": len(in_link.lanes)})
             for out_link in outgoing:
                 d = (_heading_deg(node, nodes[out_link.to_node]) - h_in) % 360.0
                 if d < 45.0 or d >= 315.0:
@@ -432,9 +444,21 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
                         poly = (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t ** 2 * p2
                     connections[conn_id] = Connection(conn_id, fl.id, tl.id, movement, ix_id, poly)
                     groups[axis + ("-L" if movement == "left" else "")].append(conn_id)
+                    ap["conns"].append(conn_id)
+                    if movement == "left":
+                        ap["left"] = True
                     conn_id += 1
-        phases = [Phase(name, tuple(sorted(groups[name])))
-                  for name in PHASE_ORDER if groups[name]]
+        phases = []
+        for axis in ("NS", "EW"):
+            on_axis = {lbl: a for lbl, a in appr.items() if a["axis"] == axis}
+            split = any(a["lanes"] == 1 and a["left"] for a in on_axis.values())
+            if split:
+                for lbl in sorted(on_axis):
+                    phases.append(Phase(lbl, tuple(sorted(on_axis[lbl]["conns"]))))
+            else:
+                for name in (axis, axis + "-L"):
+                    if groups[name]:
+                        phases.append(Phase(name, tuple(sorted(groups[name]))))
         intersections[ix_id] = Intersection(ix_id, nid, phases, yellow, all_red, min_green)
     _check_phase_conflicts(intersections, connections)
     return nodes, links, lanes, connections, intersections

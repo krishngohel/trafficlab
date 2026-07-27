@@ -174,7 +174,9 @@ def test_phase_skipping_empty_axis():
         ],
     }
     net = Network.from_config(cfg)
-    assert [p.name for p in net.intersections[0].phases] == ["EW", "EW-L"]
+    # EW approaches are single-lane WITH lefts -> split phasing (one
+    # all-movements phase per approach), per SIM_DESIGN split-phasing rule.
+    assert [p.name for p in net.intersections[0].phases] == ["E", "W"]
 
 
 def test_phase_skipping_left_phase_only():
@@ -196,7 +198,9 @@ def test_phase_skipping_left_phase_only():
         ],
     }
     net = Network.from_config(cfg)
-    assert [p.name for p in net.intersections[0].phases] == ["NS", "EW", "EW-L"]
+    # NS: single-lane but through-only (no lefts) -> merged axis phase kept.
+    # EW: single-lane approaches with lefts -> split into per-approach phases.
+    assert [p.name for p in net.intersections[0].phases] == ["NS", "E", "W"]
 
 
 # ---------------------------------------------------------------- geometry
