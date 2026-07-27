@@ -73,8 +73,14 @@ hyperparameters from `cfg.algo_kwargs` with the defaults listed below.
   `metrics(step INTEGER, key TEXT, value REAL)` — training losses, epsilon, entropy, etc.
   `evals(step, episode, seed, mean_reward, total_delay, throughput, mean_queue, traj_path)`
 - Checkpoints: torch.save of `{"step", "model", "optimizer", "torch_rng", "numpy_rng",
-  "extra"}`; `train(cfg, resume=True)` continues from `ckpt_latest.pt` exactly
-  (same RNG streams; a resumed run's metrics continue the same DB).
+  "extra"}`. The authoritative trainer state (nets, optimizers, counters) lives in
+  `extra["trainer"]` — the top-level model/optimizer fields are best-effort views and
+  may be None for some algos; loaders must use `extra["trainer"]`. Writes are atomic
+  (temp + os.replace). `train(cfg, resume=True)` resumes from `ckpt_latest.pt`
+  DETERMINISTICALLY (RNG streams restored; two resumes are byte-identical) but not as
+  an exact continuation of an uninterrupted run: the in-progress episode is restarted
+  with a fresh seed draw and replay/rollout buffer contents are rebuilt from live
+  experience. Comparisons across runs should therefore compare uninterrupted runs.
 - Eval: greedy/deterministic policy, seeds `eval_seed_base + episode`, env truncation at
   `episode_seconds`; log per-episode `total_delay = sim.cum_delay`, `throughput = sim.departed`,
   `mean_queue` (time-average of summed queues sampled per decision step); dump .traj for
@@ -99,7 +105,10 @@ masked Q. (The env's mask marks phases reachable NOW; current phase is always le
 ## dqn.py (IDQN)
 
 Independent double-DQN, one QNet per agent; `algo_kwargs["share_weights"]=True` uses a
-single shared QNet for all agents (still independent decisions). Defaults:
+single shared QNet for all agents (still independent decisions). Cadence note: with
+shared weights the one net receives one Adam step per agent per env step, so target
+syncs happen every `target_sync / n_agents` env steps and the effective learning rate
+scales with agent count relative to the per-agent path. Defaults:
 buffer 50k per agent, batch 64, target sync every 500 updates, 1 update/env step per agent,
 epsilon 1.0→0.05 linear over 40% of total_steps, gradient clip 10, Huber loss.
 Replay stores (obs, action, reward, next_obs, next_mask, truncated) per agent; standard

@@ -86,6 +86,7 @@ class RolloutBuffer:
         self.values = np.zeros(self.size, dtype=np.float32)
         self.rewards = np.zeros(self.size, dtype=np.float32)
         self.truncated = np.zeros(self.size, dtype=bool)
+        self.bootstraps = np.full(self.size, np.nan, dtype=np.float32)
         self.advantages = np.zeros(self.size, dtype=np.float32)
         self.returns = np.zeros(self.size, dtype=np.float32)
         self._n = 0
@@ -98,7 +99,8 @@ class RolloutBuffer:
         return self._n == self.size
 
     def add(self, obs, mask, action: int, logprob: float, value: float,
-            reward: float, truncated: bool) -> None:
+            reward: float, truncated: bool,
+            bootstrap_value: float | None = None) -> None:
         if self._n >= self.size:
             raise ValueError("rollout buffer is full")
         i = self._n
@@ -109,23 +111,29 @@ class RolloutBuffer:
         self.values[i] = value
         self.rewards[i] = reward
         self.truncated[i] = truncated
+        self.bootstraps[i] = np.nan if bootstrap_value is None else bootstrap_value
         self._n = i + 1
 
     def reset(self) -> None:
         self._n = 0
+        self.bootstraps[:] = np.nan
 
     def compute_gae(self, last_values, gamma: float, lam: float) -> None:
         """Fill advantages and returns with GAE(lambda) over the stored rows.
 
-        A truncated row ends an episode: its one-step delta still bootstraps
-        from the stored next value (continuing task, no termination zeroing),
-        but the lambda-trace is cut there so advantages never mix episodes.
+        A truncated row ends an episode: its one-step delta bootstraps from the
+        row's stored `bootstrap_value` — V(the episode's actual next obs) — when
+        the producer recorded one (falling back to the stored next value), and
+        the lambda-trace is cut there so advantages never mix episodes.
         `last_values` is the value estimate for the state after the final row.
         """
         next_value = float(last_values)
         gae = 0.0
         for t in range(self._n - 1, -1, -1):
-            delta = float(self.rewards[t]) + gamma * next_value - float(self.values[t])
+            nv = next_value
+            if self.truncated[t] and np.isfinite(self.bootstraps[t]):
+                nv = float(self.bootstraps[t])
+            delta = float(self.rewards[t]) + gamma * nv - float(self.values[t])
             if self.truncated[t]:
                 gae = delta
             else:

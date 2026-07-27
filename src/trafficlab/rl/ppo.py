@@ -151,10 +151,21 @@ class Trainer:
         acts = torch.tensor([int(actions[a]) for a in self.agents], dtype=torch.int64)
         logp = F.log_softmax(logits, dim=-1).gather(-1, acts.unsqueeze(-1)).squeeze(-1)
         mask_np = mask.numpy()
+        boot = None
+        if truncated:
+            # Bootstrap truncated rows from the episode's ACTUAL next state,
+            # not whatever obs follows in the rollout (a fresh reset otherwise
+            # gives systematically optimistic end-of-episode targets).
+            next_mat = np.stack([np.asarray(next_obs[a], dtype=np.float32)
+                                 for a in self.agents])
+            with torch.no_grad():
+                _, boot = self._forward(torch.from_numpy(next_mat),
+                                        self._stack_masks(next_infos))
         for i, a in enumerate(self.agents):
             self.buffers[a].add(obs_mat[i], mask_np[i], int(acts[i]), float(logp[i]),
                                 float(values[i]),
-                                float(rewards[a]) * self.reward_scale, bool(truncated))
+                                float(rewards[a]) * self.reward_scale, bool(truncated),
+                                bootstrap_value=float(boot[i]) if boot is not None else None)
         self.env_steps += 1
         self._cache = None
         if not self.buffers[self.agents[0]].full:

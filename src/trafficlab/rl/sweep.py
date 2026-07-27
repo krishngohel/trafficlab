@@ -50,7 +50,7 @@ def expand_grid(base: RunConfig, grid: dict[str, list]) -> list[RunConfig]:
         cfg = copy.deepcopy(base)
         for key, value in zip(keys, values):
             _set_dotted(cfg, key, value)
-        stem = base.run_name or default_run_name(cfg)
+        stem = _fmt_value(base.run_name) if base.run_name else default_run_name(cfg)
         suffix = "_".join(f"{k.rsplit('.', 1)[-1]}={_fmt_value(v)}"
                           for k, v in zip(keys, values))
         cfg.run_name = f"{stem}_{suffix}" if suffix else stem

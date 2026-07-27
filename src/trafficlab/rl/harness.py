@@ -14,6 +14,8 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import json
+import os
+import re
 import shutil
 import sqlite3
 from dataclasses import dataclass, field
@@ -71,8 +73,14 @@ class RunConfig:
     record_eval_traj: bool = True
 
 
+def sanitize_name(name: str) -> str:
+    """Filesystem-safe run/dir name (Windows-reserved chars included)."""
+    return re.sub(r"[^-A-Za-z0-9_.+=]", "-", name)
+
+
 def default_run_name(cfg: RunConfig) -> str:
-    return f"{cfg.algo}_{cfg.network}_{cfg.demand}_{cfg.reward}_s{cfg.seed}"
+    return sanitize_name(
+        f"{cfg.algo}_{cfg.network}_{cfg.demand}_{cfg.reward}_s{cfg.seed}")
 
 
 # ---------------------------------------------------------------------- helpers
@@ -122,9 +130,15 @@ def _save_checkpoint(run_dir: Path, step: int, episode_index: int,
         "numpy_rng": rng.bit_generator.state,
         "extra": {"episode_index": episode_index, "trainer": sd},
     }
+    # Atomic writes: a crash mid-write must never corrupt an existing
+    # ckpt_latest.pt (resume reads only that file).
     step_path = run_dir / f"ckpt_{step}.pt"
-    torch.save(ckpt, step_path)
-    shutil.copyfile(step_path, run_dir / "ckpt_latest.pt")
+    tmp = run_dir / f"ckpt_{step}.pt.tmp"
+    torch.save(ckpt, tmp)
+    os.replace(tmp, step_path)
+    tmp_latest = run_dir / "ckpt_latest.pt.tmp"
+    shutil.copyfile(step_path, tmp_latest)
+    os.replace(tmp_latest, run_dir / "ckpt_latest.pt")
 
 
 def _evaluate(cfg: RunConfig, trainer, eval_env, step: int, run_dir: Path,
@@ -168,7 +182,7 @@ def _evaluate(cfg: RunConfig, trainer, eval_env, step: int, run_dir: Path,
 # ---------------------------------------------------------------------- train
 def train(cfg: RunConfig, resume: bool = False) -> dict:
     """Run (or resume) one training run; returns final summary metrics."""
-    run_name = cfg.run_name or default_run_name(cfg)
+    run_name = sanitize_name(cfg.run_name) if cfg.run_name else default_run_name(cfg)
     run_dir = Path(cfg.out_root) / run_name
     ckpt_latest = run_dir / "ckpt_latest.pt"
     if resume and not ckpt_latest.exists():
