@@ -84,6 +84,7 @@ class Simulator:
         # Counters
         self.spawned = 0
         self.departed = 0
+        self.crossings = {ix_id: 0 for ix_id in sorted(network.intersections)}
         self.cum_delay = 0.0
         self.wait_by_approach = np.zeros(len(self._approaches))
         self._occ: dict[tuple[int, int], list[Vehicle]] = {}
@@ -394,6 +395,7 @@ class Simulator:
                         veh.v = 0.0
                         break
                     dest_kind, dest_elem = ON_CONN, veh.next_conn
+                    self.crossings[self.net.connections[veh.next_conn].intersection] += 1
                 else:
                     dest_kind, dest_elem = ON_LANE, self.net.connections[veh.elem].to_lane
                 # Strict no-overlap insertion into the destination element.
@@ -450,6 +452,10 @@ class Simulator:
             n = sum(len(self._occ_list(ON_LANE, l)) for l in lanes)
             d[i] = n / max(total_len, 1.0) * 1000.0     # veh/km
         return d
+
+    def vehicles_near_stop(self, lane_id: int, dist: float = 30.0) -> int:
+        lane_len = self.net.lanes[lane_id].length
+        return sum(1 for v in self._occ_list(ON_LANE, lane_id) if lane_len - v.s <= dist)
 
     def movement_pressure(self, conn_id: int) -> int:
         conn = self.net.connections[conn_id]
