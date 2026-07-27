@@ -62,8 +62,15 @@ const downloadP = page.waitForEvent("download", { timeout: (secs + 60) * 1000 })
 await page.getByRole("button", { name: /start recording/i }).click();
 console.log(`recording ~${secs}s of wall-clock...`);
 await page.waitForTimeout(secs * 1000);
-// Stop early via the recording indicator if present; else it runs to range end.
-await page.getByRole("button", { name: /stop/i }).first().click().catch(() => {});
+// Stop early via the recording indicator; direct DOM click sidesteps any
+// overlay/actionability issues in compare mode.
+const stopped = await page.evaluate(() => {
+  const btn = [...document.querySelectorAll("button")]
+    .find((b) => /stop/i.test(b.textContent || ""));
+  if (btn) { btn.click(); return (btn.textContent || "").trim(); }
+  return null;
+});
+console.log("stop button:", stopped ?? "NOT FOUND (waiting for range end)");
 const download = await downloadP;
 const webm = join(outDir, outGif.replace(/\.gif$/, ".webm"));
 await download.saveAs(webm);

@@ -1,0 +1,3 @@
+network,demand,policy,seed,spawned,throughput,total_delay,delay_per_vehicle,mean_queue
+single,rush,fixed,0,1919,1901,302605.7,157.69,52.43
+single,rush,dqn:dqn_single_rush_queue_s0_algo=dqn_reward=queue_seed=0,0,1921,1905,246979.4,128.57,41.73
