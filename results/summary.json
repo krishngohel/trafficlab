@@ -1,68 +1,68 @@
 {
-  "source": "results/eval_baselines.csv",
-  "episodes": 480,
+  "source": "results/eval_final.csv",
+  "episodes": 720,
   "cells": [
     {
       "network": "arterial6",
       "demand": "heavy",
       "order": [
+        "actuated",
         "fixed",
         "webster",
-        "actuated",
         "max_pressure"
       ],
-      "best_delay_policy": "fixed",
+      "best_delay_policy": "actuated",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 264.07,
-            "ci95": 2.6914,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 3973.0,
-            "ci95": 35.7129,
-            "rank": 1.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 309.845,
-            "ci95": 5.3931,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 3366.4,
-            "ci95": 59.5032,
-            "rank": 2.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 390.69,
-            "ci95": 7.6758,
-            "rank": 3.0
+            "mean": 191.942,
+            "ci95": 1.5139,
+            "rank": 1.0
           },
           "throughput": {
-            "mean": 2767.0,
-            "ci95": 57.7645,
+            "mean": 5868.9,
+            "ci95": 14.0554,
+            "rank": 1.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 218.855,
+            "ci95": 1.3595,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 4863.6,
+            "ci95": 13.0257,
             "rank": 3.0
           }
         },
         "max_pressure": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 2993.014,
-            "ci95": 79.1779,
+            "mean": 323.508,
+            "ci95": 3.9421,
             "rank": 4.0
           },
           "throughput": {
-            "mean": 65.2,
-            "ci95": 12.1007,
+            "mean": 3997.8,
+            "ci95": 33.5065,
             "rank": 4.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 228.797,
+            "ci95": 5.5944,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 5737.4,
+            "ci95": 24.8825,
+            "rank": 2.0
           }
         }
       }
@@ -71,63 +71,63 @@
       "network": "arterial6",
       "demand": "light",
       "order": [
-        "webster",
-        "fixed",
         "actuated",
-        "max_pressure"
+        "max_pressure",
+        "fixed",
+        "webster"
       ],
-      "best_delay_policy": "webster",
+      "best_delay_policy": "actuated",
       "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 67.639,
+            "ci95": 1.5957,
+            "rank": 1.0
+          },
+          "throughput": {
+            "mean": 4064.0,
+            "ci95": 47.711,
+            "rank": 1.0
+          }
+        },
         "fixed": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 207.731,
-            "ci95": 6.3221,
+            "mean": 80.977,
+            "ci95": 3.2964,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 4028.0,
+            "ci95": 49.4258,
+            "rank": 4.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 68.4,
+            "ci95": 4.5695,
             "rank": 2.0
           },
           "throughput": {
-            "mean": 3401.9,
-            "ci95": 48.6683,
+            "mean": 4049.3,
+            "ci95": 40.6686,
             "rank": 2.0
           }
         },
         "webster": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 190.962,
-            "ci95": 5.2502,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 3521.6,
-            "ci95": 28.9877,
-            "rank": 1.0
-          }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 355.062,
-            "ci95": 6.1666,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 2322.4,
-            "ci95": 38.4573,
-            "rank": 3.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 2361.547,
-            "ci95": 128.3536,
+            "mean": 83.408,
+            "ci95": 4.2373,
             "rank": 4.0
           },
           "throughput": {
-            "mean": 153.1,
-            "ci95": 26.979,
-            "rank": 4.0
+            "mean": 4038.4,
+            "ci95": 55.7738,
+            "rank": 3.0
           }
         }
       }
@@ -136,63 +136,63 @@
       "network": "arterial6",
       "demand": "rush",
       "order": [
+        "actuated",
         "fixed",
         "webster",
-        "actuated",
         "max_pressure"
       ],
-      "best_delay_policy": "fixed",
+      "best_delay_policy": "actuated",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 247.844,
-            "ci95": 6.3158,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 3859.4,
-            "ci95": 54.5556,
-            "rank": 1.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 250.263,
-            "ci95": 5.5435,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 3736.0,
-            "ci95": 57.8176,
-            "rank": 2.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 367.206,
-            "ci95": 6.1522,
-            "rank": 3.0
+            "mean": 170.031,
+            "ci95": 1.5328,
+            "rank": 1.0
           },
           "throughput": {
-            "mean": 2579.5,
-            "ci95": 30.3746,
+            "mean": 5656.0,
+            "ci95": 15.5989,
+            "rank": 1.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 209.328,
+            "ci95": 1.3453,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 4777.4,
+            "ci95": 11.7595,
             "rank": 3.0
           }
         },
         "max_pressure": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 2617.355,
-            "ci95": 131.2611,
+            "mean": 266.733,
+            "ci95": 3.1305,
             "rank": 4.0
           },
           "throughput": {
-            "mean": 115.5,
-            "ci95": 23.6983,
+            "mean": 4266.4,
+            "ci95": 29.8896,
             "rank": 4.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 228.094,
+            "ci95": 9.4359,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 5588.2,
+            "ci95": 40.3116,
+            "rank": 2.0
           }
         }
       }
@@ -208,251 +208,419 @@
       ],
       "best_delay_policy": "webster",
       "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 280.642,
+            "ci95": 4.5813,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 4748.5,
+            "ci95": 20.828,
+            "rank": 1.0
+          }
+        },
         "fixed": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 301.138,
-            "ci95": 4.6936,
+            "mean": 295.467,
+            "ci95": 2.6811,
             "rank": 3.0
           },
           "throughput": {
-            "mean": 3999.2,
+            "mean": 4005.1,
+            "ci95": 6.4108,
+            "rank": 4.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 306.243,
+            "ci95": 3.9557,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 4245.3,
+            "ci95": 13.5973,
+            "rank": 3.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 268.785,
+            "ci95": 2.931,
+            "rank": 1.0
+          },
+          "throughput": {
+            "mean": 4618.9,
+            "ci95": 12.6683,
+            "rank": 2.0
+          }
+        }
+      }
+    },
+    {
+      "network": "grid2x2",
+      "demand": "light",
+      "order": [
+        "max_pressure",
+        "fixed",
+        "webster",
+        "actuated",
+        "dqn-queue (s1)",
+        "ippo-queue (s1)",
+        "dqn-queue (s0)",
+        "ippo-queue (s0)",
+        "gat-queue (s1)",
+        "gat-queue (s0)"
+      ],
+      "best_delay_policy": "max_pressure",
+      "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 65.468,
+            "ci95": 0.8315,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 2303.9,
+            "ci95": 30.5727,
+            "rank": 6.0
+          }
+        },
+        "dqn-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 74.339,
+            "ci95": 1.271,
+            "rank": 7.0
+          },
+          "throughput": {
+            "mean": 2306.9,
+            "ci95": 25.45,
+            "rank": 5.0
+          }
+        },
+        "dqn-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 70.454,
+            "ci95": 1.11,
+            "rank": 5.0
+          },
+          "throughput": {
+            "mean": 2303.7,
+            "ci95": 32.79,
+            "rank": 7.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 59.201,
+            "ci95": 0.7155,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 2310.1,
+            "ci95": 21.1697,
+            "rank": 4.0
+          }
+        },
+        "gat-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 155.626,
+            "ci95": 3.1466,
+            "rank": 10.0
+          },
+          "throughput": {
+            "mean": 2236.6,
+            "ci95": 29.8801,
+            "rank": 10.0
+          }
+        },
+        "gat-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 110.272,
+            "ci95": 2.0488,
+            "rank": 9.0
+          },
+          "throughput": {
+            "mean": 2280.9,
+            "ci95": 31.5591,
+            "rank": 9.0
+          }
+        },
+        "ippo-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 89.228,
+            "ci95": 1.2721,
+            "rank": 8.0
+          },
+          "throughput": {
+            "mean": 2287.2,
+            "ci95": 24.0071,
+            "rank": 8.0
+          }
+        },
+        "ippo-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 72.995,
+            "ci95": 0.7118,
+            "rank": 6.0
+          },
+          "throughput": {
+            "mean": 2312.1,
+            "ci95": 21.167,
+            "rank": 3.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 54.718,
+            "ci95": 0.9122,
+            "rank": 1.0
+          },
+          "throughput": {
+            "mean": 2314.8,
+            "ci95": 22.3642,
+            "rank": 2.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 61.886,
+            "ci95": 0.6437,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 2315.6,
+            "ci95": 20.1113,
+            "rank": 1.0
+          }
+        }
+      }
+    },
+    {
+      "network": "grid2x2",
+      "demand": "rush",
+      "order": [
+        "actuated",
+        "webster",
+        "ippo-queue (s0)",
+        "max_pressure",
+        "fixed",
+        "gat-queue (s1)",
+        "ippo-queue (s1)",
+        "dqn-queue (s0)",
+        "dqn-queue (s1)",
+        "gat-queue (s0)"
+      ],
+      "best_delay_policy": "actuated",
+      "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 189.283,
+            "ci95": 7.2292,
+            "rank": 1.0
+          },
+          "throughput": {
+            "mean": 3884.2,
+            "ci95": 40.3468,
+            "rank": 1.0
+          }
+        },
+        "dqn-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 266.609,
+            "ci95": 11.2211,
+            "rank": 8.0
+          },
+          "throughput": {
+            "mean": 3612.9,
+            "ci95": 43.648,
+            "rank": 9.0
+          }
+        },
+        "dqn-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 283.194,
+            "ci95": 15.8192,
+            "rank": 9.0
+          },
+          "throughput": {
+            "mean": 3203.5,
+            "ci95": 139.0468,
+            "rank": 10.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 247.419,
+            "ci95": 10.6624,
+            "rank": 5.0
+          },
+          "throughput": {
+            "mean": 3827.2,
+            "ci95": 25.3075,
+            "rank": 4.0
+          }
+        },
+        "gat-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 299.562,
+            "ci95": 7.0083,
+            "rank": 10.0
+          },
+          "throughput": {
+            "mean": 3810.8,
+            "ci95": 26.6852,
+            "rank": 7.0
+          }
+        },
+        "gat-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 257.11,
+            "ci95": 12.6139,
+            "rank": 6.0
+          },
+          "throughput": {
+            "mean": 3816.3,
+            "ci95": 25.8921,
+            "rank": 5.0
+          }
+        },
+        "ippo-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 227.899,
+            "ci95": 9.679,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 3797.8,
+            "ci95": 31.3519,
+            "rank": 8.0
+          }
+        },
+        "ippo-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 261.576,
+            "ci95": 12.1224,
+            "rank": 7.0
+          },
+          "throughput": {
+            "mean": 3812.2,
+            "ci95": 16.6113,
+            "rank": 6.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 235.446,
+            "ci95": 8.1725,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 3852.1,
+            "ci95": 35.4435,
+            "rank": 3.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 207.288,
+            "ci95": 8.2681,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 3876.2,
+            "ci95": 42.579,
+            "rank": 2.0
+          }
+        }
+      }
+    },
+    {
+      "network": "grid4x4",
+      "demand": "heavy",
+      "order": [
+        "webster",
+        "actuated",
+        "fixed",
+        "max_pressure"
+      ],
+      "best_delay_policy": "webster",
+      "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 386.397,
+            "ci95": 4.8187,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 9120.8,
+            "ci95": 18.8041,
+            "rank": 1.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 396.008,
+            "ci95": 4.9946,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 7604.9,
+            "ci95": 21.7786,
+            "rank": 4.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 515.711,
+            "ci95": 4.7392,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 7805.2,
             "ci95": 17.4785,
-            "rank": 4.0
+            "rank": 3.0
           }
         },
         "webster": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 269.0,
-            "ci95": 2.6156,
+            "mean": 382.888,
+            "ci95": 3.7902,
             "rank": 1.0
           },
           "throughput": {
-            "mean": 4618.2,
-            "ci95": 8.7724,
+            "mean": 8710.6,
+            "ci95": 19.9951,
             "rank": 2.0
-          }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 281.095,
-            "ci95": 4.2529,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 4739.9,
-            "ci95": 13.8023,
-            "rank": 1.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 308.411,
-            "ci95": 3.3465,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 4245.8,
-            "ci95": 20.2229,
-            "rank": 3.0
-          }
-        }
-      }
-    },
-    {
-      "network": "grid2x2",
-      "demand": "light",
-      "order": [
-        "max_pressure",
-        "fixed",
-        "webster",
-        "actuated"
-      ],
-      "best_delay_policy": "max_pressure",
-      "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 59.67,
-            "ci95": 0.5286,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 2309.5,
-            "ci95": 21.1477,
-            "rank": 2.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 61.839,
-            "ci95": 0.736,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 2308.1,
-            "ci95": 19.5414,
-            "rank": 3.0
-          }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 64.648,
-            "ci95": 0.9731,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 2301.0,
-            "ci95": 22.3901,
-            "rank": 4.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 55.318,
-            "ci95": 0.8436,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 2320.8,
-            "ci95": 24.137,
-            "rank": 1.0
-          }
-        }
-      }
-    },
-    {
-      "network": "grid2x2",
-      "demand": "rush",
-      "order": [
-        "actuated",
-        "webster",
-        "fixed",
-        "max_pressure"
-      ],
-      "best_delay_policy": "actuated",
-      "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 239.376,
-            "ci95": 9.8708,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 3801.0,
-            "ci95": 42.349,
-            "rank": 4.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 212.014,
-            "ci95": 9.2506,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 3874.6,
-            "ci95": 30.7614,
-            "rank": 2.0
-          }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 188.715,
-            "ci95": 4.4894,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 3887.0,
-            "ci95": 39.4408,
-            "rank": 1.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 242.351,
-            "ci95": 7.7318,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 3853.4,
-            "ci95": 19.283,
-            "rank": 3.0
-          }
-        }
-      }
-    },
-    {
-      "network": "grid4x4",
-      "demand": "heavy",
-      "order": [
-        "webster",
-        "actuated",
-        "fixed",
-        "max_pressure"
-      ],
-      "best_delay_policy": "webster",
-      "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 396.701,
-            "ci95": 3.2848,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 7604.7,
-            "ci95": 24.8066,
-            "rank": 4.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 380.076,
-            "ci95": 1.7066,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 8720.0,
-            "ci95": 15.4855,
-            "rank": 2.0
-          }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 390.016,
-            "ci95": 5.0752,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 9105.3,
-            "ci95": 21.801,
-            "rank": 1.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 515.596,
-            "ci95": 5.4257,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 7776.0,
-            "ci95": 28.4908,
-            "rank": 3.0
           }
         }
       }
@@ -468,55 +636,55 @@
       ],
       "best_delay_policy": "max_pressure",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 113.18,
-            "ci95": 1.0955,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 4558.0,
-            "ci95": 62.7942,
-            "rank": 1.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 120.378,
-            "ci95": 1.5024,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 4551.2,
-            "ci95": 70.4785,
-            "rank": 3.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 126.744,
-            "ci95": 2.468,
+            "mean": 126.79,
+            "ci95": 2.8007,
             "rank": 4.0
           },
           "throughput": {
-            "mean": 4522.4,
-            "ci95": 54.1676,
+            "mean": 4496.8,
+            "ci95": 75.4112,
             "rank": 4.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 113.37,
+            "ci95": 0.8149,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 4557.9,
+            "ci95": 63.9839,
+            "rank": 1.0
           }
         },
         "max_pressure": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 105.438,
-            "ci95": 1.3594,
+            "mean": 105.677,
+            "ci95": 0.9831,
             "rank": 1.0
           },
           "throughput": {
-            "mean": 4552.2,
-            "ci95": 58.1126,
+            "mean": 4542.2,
+            "ci95": 56.2787,
+            "rank": 3.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 118.867,
+            "ci95": 0.61,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 4550.6,
+            "ci95": 64.7424,
             "rank": 2.0
           }
         }
@@ -533,56 +701,56 @@
       ],
       "best_delay_policy": "actuated",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 341.898,
-            "ci95": 5.5001,
-            "rank": 3.0
-          },
-          "throughput": {
-            "mean": 7341.9,
-            "ci95": 29.8615,
-            "rank": 4.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 318.042,
-            "ci95": 8.9709,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 7561.4,
-            "ci95": 49.2278,
-            "rank": 2.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 295.018,
-            "ci95": 8.0365,
+            "mean": 293.663,
+            "ci95": 8.2681,
             "rank": 1.0
           },
           "throughput": {
-            "mean": 7564.3,
-            "ci95": 66.9771,
+            "mean": 7579.6,
+            "ci95": 61.6523,
             "rank": 1.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 342.452,
+            "ci95": 9.2653,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 7352.2,
+            "ci95": 26.6148,
+            "rank": 4.0
           }
         },
         "max_pressure": {
           "seeds": 10,
           "delay_per_vehicle": {
-            "mean": 389.426,
-            "ci95": 6.7552,
+            "mean": 378.153,
+            "ci95": 10.4736,
             "rank": 4.0
           },
           "throughput": {
-            "mean": 7367.5,
-            "ci95": 24.412,
+            "mean": 7360.7,
+            "ci95": 33.5493,
             "rank": 3.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 313.749,
+            "ci95": 7.0557,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 7518.4,
+            "ci95": 21.2387,
+            "rank": 2.0
           }
         }
       }
@@ -598,32 +766,6 @@
       ],
       "best_delay_policy": "actuated",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 228.753,
-            "ci95": 1.3478,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 2062.6,
-            "ci95": 6.9613,
-            "rank": 4.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 192.517,
-            "ci95": 1.0007,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 2388.4,
-            "ci95": 8.2954,
-            "rank": 2.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
@@ -635,6 +777,19 @@
             "mean": 2461.3,
             "ci95": 10.3386,
             "rank": 1.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 228.753,
+            "ci95": 1.3478,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 2062.6,
+            "ci95": 6.9613,
+            "rank": 4.0
           }
         },
         "max_pressure": {
@@ -649,6 +804,19 @@
             "ci95": 15.2308,
             "rank": 3.0
           }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 192.506,
+            "ci95": 0.9962,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 2388.5,
+            "ci95": 8.3026,
+            "rank": 2.0
+          }
         }
       }
     },
@@ -659,10 +827,81 @@
         "max_pressure",
         "webster",
         "fixed",
-        "actuated"
+        "dqn-queue (s0)",
+        "actuated",
+        "dqn-queue (s1)",
+        "dqn-pressure (s1)",
+        "dqn-pressure (s0)",
+        "ippo-queue (s1)",
+        "ippo-queue (s0)"
       ],
       "best_delay_policy": "max_pressure",
       "policies": {
+        "actuated": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 33.534,
+            "ci95": 0.7623,
+            "rank": 5.0
+          },
+          "throughput": {
+            "mean": 1173.9,
+            "ci95": 23.1281,
+            "rank": 3.0
+          }
+        },
+        "dqn-pressure (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 45.507,
+            "ci95": 1.1431,
+            "rank": 8.0
+          },
+          "throughput": {
+            "mean": 1167.3,
+            "ci95": 23.7936,
+            "rank": 8.0
+          }
+        },
+        "dqn-pressure (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 45.053,
+            "ci95": 1.2797,
+            "rank": 7.0
+          },
+          "throughput": {
+            "mean": 1168.9,
+            "ci95": 24.0394,
+            "rank": 7.0
+          }
+        },
+        "dqn-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 33.176,
+            "ci95": 0.7248,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 1171.2,
+            "ci95": 22.2572,
+            "rank": 6.0
+          }
+        },
+        "dqn-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 35.135,
+            "ci95": 0.6837,
+            "rank": 6.0
+          },
+          "throughput": {
+            "mean": 1172.7,
+            "ci95": 21.5782,
+            "rank": 5.0
+          }
+        },
         "fixed": {
           "seeds": 10,
           "delay_per_vehicle": {
@@ -674,6 +913,45 @@
             "mean": 1173.5,
             "ci95": 22.1354,
             "rank": 4.0
+          }
+        },
+        "ippo-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 127.423,
+            "ci95": 3.3347,
+            "rank": 10.0
+          },
+          "throughput": {
+            "mean": 1128.8,
+            "ci95": 22.0261,
+            "rank": 10.0
+          }
+        },
+        "ippo-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 127.386,
+            "ci95": 3.3375,
+            "rank": 9.0
+          },
+          "throughput": {
+            "mean": 1128.9,
+            "ci95": 22.0458,
+            "rank": 9.0
+          }
+        },
+        "max_pressure": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 29.099,
+            "ci95": 0.754,
+            "rank": 1.0
+          },
+          "throughput": {
+            "mean": 1175.0,
+            "ci95": 21.6544,
+            "rank": 1.0
           }
         },
         "webster": {
@@ -688,32 +966,6 @@
             "ci95": 22.4033,
             "rank": 2.0
           }
-        },
-        "actuated": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 33.534,
-            "ci95": 0.7623,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 1173.9,
-            "ci95": 23.1281,
-            "rank": 3.0
-          }
-        },
-        "max_pressure": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 29.125,
-            "ci95": 0.7327,
-            "rank": 1.0
-          },
-          "throughput": {
-            "mean": 1174.8,
-            "ci95": 21.7691,
-            "rank": 1.0
-          }
         }
       }
     },
@@ -722,38 +974,18 @@
       "demand": "rush",
       "order": [
         "actuated",
+        "dqn-pressure (s0)",
+        "dqn-queue (s0)",
+        "dqn-pressure (s1)",
+        "dqn-queue (s1)",
         "webster",
         "max_pressure",
-        "fixed"
+        "fixed",
+        "ippo-queue (s1)",
+        "ippo-queue (s0)"
       ],
       "best_delay_policy": "actuated",
       "policies": {
-        "fixed": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 173.164,
-            "ci95": 12.9487,
-            "rank": 4.0
-          },
-          "throughput": {
-            "mean": 1936.3,
-            "ci95": 30.3873,
-            "rank": 4.0
-          }
-        },
-        "webster": {
-          "seeds": 10,
-          "delay_per_vehicle": {
-            "mean": 143.466,
-            "ci95": 7.8381,
-            "rank": 2.0
-          },
-          "throughput": {
-            "mean": 1953.3,
-            "ci95": 29.9862,
-            "rank": 2.0
-          }
-        },
         "actuated": {
           "seeds": 10,
           "delay_per_vehicle": {
@@ -764,7 +996,98 @@
           "throughput": {
             "mean": 1954.2,
             "ci95": 26.1906,
+            "rank": 2.0
+          }
+        },
+        "dqn-pressure (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 112.542,
+            "ci95": 7.2359,
+            "rank": 2.0
+          },
+          "throughput": {
+            "mean": 1956.2,
+            "ci95": 27.2523,
             "rank": 1.0
+          }
+        },
+        "dqn-pressure (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 126.959,
+            "ci95": 2.7109,
+            "rank": 4.0
+          },
+          "throughput": {
+            "mean": 1924.8,
+            "ci95": 5.7006,
+            "rank": 8.0
+          }
+        },
+        "dqn-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 126.202,
+            "ci95": 3.031,
+            "rank": 3.0
+          },
+          "throughput": {
+            "mean": 1952.8,
+            "ci95": 29.9269,
+            "rank": 4.0
+          }
+        },
+        "dqn-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 131.849,
+            "ci95": 3.8907,
+            "rank": 5.0
+          },
+          "throughput": {
+            "mean": 1935.5,
+            "ci95": 13.4087,
+            "rank": 7.0
+          }
+        },
+        "fixed": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 173.164,
+            "ci95": 12.9487,
+            "rank": 8.0
+          },
+          "throughput": {
+            "mean": 1936.3,
+            "ci95": 30.3873,
+            "rank": 6.0
+          }
+        },
+        "ippo-queue (s0)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 301.129,
+            "ci95": 7.7263,
+            "rank": 10.0
+          },
+          "throughput": {
+            "mean": 1093.5,
+            "ci95": 32.1265,
+            "rank": 10.0
+          }
+        },
+        "ippo-queue (s1)": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 187.696,
+            "ci95": 5.3027,
+            "rank": 9.0
+          },
+          "throughput": {
+            "mean": 1733.8,
+            "ci95": 33.7432,
+            "rank": 9.0
           }
         },
         "max_pressure": {
@@ -772,11 +1095,24 @@
           "delay_per_vehicle": {
             "mean": 145.686,
             "ci95": 11.2851,
-            "rank": 3.0
+            "rank": 7.0
           },
           "throughput": {
             "mean": 1944.0,
             "ci95": 41.6274,
+            "rank": 5.0
+          }
+        },
+        "webster": {
+          "seeds": 10,
+          "delay_per_vehicle": {
+            "mean": 143.466,
+            "ci95": 7.8381,
+            "rank": 6.0
+          },
+          "throughput": {
+            "mean": 1953.3,
+            "ci95": 29.9862,
             "rank": 3.0
           }
         }
@@ -785,28 +1121,76 @@
   ],
   "overall": [
     {
-      "policy": "webster",
-      "cells": 12,
-      "mean_rank_delay": 1.917,
-      "mean_rank_throughput": 2.083
-    },
-    {
       "policy": "actuated",
       "cells": 12,
-      "mean_rank_delay": 2.417,
-      "mean_rank_throughput": 2.167
+      "mean_rank_delay": 2.0,
+      "mean_rank_throughput": 1.917
     },
     {
-      "policy": "fixed",
+      "policy": "webster",
       "cells": 12,
-      "mean_rank_delay": 2.583,
-      "mean_rank_throughput": 2.917
+      "mean_rank_delay": 2.667,
+      "mean_rank_throughput": 2.083
     },
     {
       "policy": "max_pressure",
       "cells": 12,
-      "mean_rank_delay": 3.083,
-      "mean_rank_throughput": 2.833
+      "mean_rank_delay": 3.25,
+      "mean_rank_throughput": 3.0
+    },
+    {
+      "policy": "fixed",
+      "cells": 12,
+      "mean_rank_delay": 3.333,
+      "mean_rank_throughput": 3.75
+    },
+    {
+      "policy": "dqn-pressure (s0)",
+      "cells": 2,
+      "mean_rank_delay": 5.0,
+      "mean_rank_throughput": 4.5
+    },
+    {
+      "policy": "dqn-pressure (s1)",
+      "cells": 2,
+      "mean_rank_delay": 5.5,
+      "mean_rank_throughput": 7.5
+    },
+    {
+      "policy": "dqn-queue (s0)",
+      "cells": 4,
+      "mean_rank_delay": 5.5,
+      "mean_rank_throughput": 6.0
+    },
+    {
+      "policy": "dqn-queue (s1)",
+      "cells": 4,
+      "mean_rank_delay": 6.25,
+      "mean_rank_throughput": 7.25
+    },
+    {
+      "policy": "gat-queue (s1)",
+      "cells": 2,
+      "mean_rank_delay": 7.5,
+      "mean_rank_throughput": 7.0
+    },
+    {
+      "policy": "ippo-queue (s0)",
+      "cells": 4,
+      "mean_rank_delay": 7.75,
+      "mean_rank_throughput": 9.0
+    },
+    {
+      "policy": "ippo-queue (s1)",
+      "cells": 4,
+      "mean_rank_delay": 7.75,
+      "mean_rank_throughput": 6.75
+    },
+    {
+      "policy": "gat-queue (s0)",
+      "cells": 2,
+      "mean_rank_delay": 10.0,
+      "mean_rank_throughput": 8.5
     }
   ]
 }

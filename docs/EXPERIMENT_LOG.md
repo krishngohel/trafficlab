@@ -215,3 +215,19 @@ under-trained rather than broken; a 150k+ run is the obvious follow-up.
 (parameter sharing amortizes experience across agents), but plain independent
 DQN still wins at this budget. Final cross-policy numbers with 10 eval seeds
 and 95% CIs on the frozen engine: `results/TABLES.md`.
+
+## Final evaluation — the horizon-mismatch reversal
+
+The 1-hour, 10-seed final matrix (vs the 20-minute training evals) reordered
+the grid bracket: DQN, best in training evals (223.7k), degraded to 266.6 ±
+11.2 s/veh — behind fixed (247.4) — while IPPO held up (227.9 ± 9.7, −8% vs
+fixed) and became the best learned grid policy. Training episodes were 1200 s;
+evaluation runs 3600 s, whose tail sits in a demand regime the policies never
+saw. The off-policy, per-agent Q-functions overfitted the trained horizon; the
+shared stochastic IPPO policy generalized. On the single intersection the
+picture was stable across horizons: dqn-pressure (s0) ties actuated (112.5 ±
+7.2 vs 111.7 ± 6.8) and the queue-trained DQN transfers to light demand at
+baseline level. Lessons recorded for any follow-up: (a) train at (or across)
+the evaluation horizon; (b) evaluate on the full horizon from iteration 1 —
+short-horizon validation curves actively misled checkpoint selection here;
+(c) GAT deserves a 150k+ budget before a verdict.
