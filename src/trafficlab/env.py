@@ -3,9 +3,14 @@
 No pettingzoo/gymnasium dependency — the tiny Space classes below cover what the
 in-repo RL code needs. Agent ids are stringified intersection ids.
 
-Observation (float32): [queue×4, density×4, phase one-hot×P, time-since-change×1]
+Observation (float32), by obs_version:
+  v1: [queue×4, density×4, phase one-hot×P, time-since-change×1]
+  v2: v1 + [signal state one-hot×3, approach presence×4 (vehicles within 40 m
+      of each stop line /10 — what an actuated controller's detectors see),
+      episode progress×1 (t/episode — demand-profile position), neighbor
+      summary×8 (up to 4 neighbors: current phase /P, total queue /30)]
   queues normalized by 30 veh, densities by 200 veh/km, time by 60 s (capped 1).
-  Approach slots beyond an intersection's actual approach count are zero.
+  Approach/neighbor slots beyond the actual count are zero.
 Action: Discrete(P) — target phase index. Requests during a yellow/all-red
   transition are dropped; a request before min-green is DEFERRED and fires when
   min-green elapses (re-requesting the current phase cancels a deferred switch,
@@ -27,7 +32,10 @@ from .simulator import Simulator
 QUEUE_NORM = 30.0
 DENSITY_NORM = 200.0
 TIME_NORM = 60.0
+PRESENCE_NORM = 10.0
+PRESENCE_DIST = 40.0
 MAX_APPROACHES = 4
+MAX_NEIGHBORS = 4
 REWARDS = ("pressure", "queue", "wait", "throughput")
 
 
@@ -57,7 +65,7 @@ class TrafficEnv:
     def __init__(self, network_cfg: dict, demand_cfg: dict, *,
                  reward: str = "pressure", decision_interval: float = 5.0,
                  episode_seconds: float = 3600.0, dt: float = 0.5,
-                 network_name: str = ""):
+                 network_name: str = "", obs_version: int = 1):
         if reward not in REWARDS:
             raise ValueError(f"reward must be one of {REWARDS}")
         self.network_cfg = network_cfg
@@ -75,7 +83,18 @@ class TrafficEnv:
         self._approach_idx: dict[str, list[int]] = {str(i): [] for i in self.ix_ids}
         for ai, ap in enumerate(net.approaches()):
             self._approach_idx[str(ap["intersection"])].append(ai)
-        self.obs_dim = 2 * MAX_APPROACHES + self.max_phases + 1
+        # Approach lanes per agent, for the v2 presence detectors.
+        self._approach_lanes: dict[str, list[tuple[int, ...]]] = {}
+        for i in self.ix_ids:
+            self._approach_lanes[str(i)] = [
+                tuple(net.links[ap["link"]].lanes)
+                for ap in net.approaches() if ap["intersection"] == i]
+        if obs_version not in (1, 2):
+            raise ValueError(f"unknown obs_version {obs_version}")
+        self.obs_version = obs_version
+        base_dim = 2 * MAX_APPROACHES + self.max_phases + 1
+        self.obs_dim = base_dim if obs_version == 1 else \
+            base_dim + 3 + MAX_APPROACHES + 1 + 2 * MAX_NEIGHBORS
         # Static neighbor graph (for GAT): intersections sharing a link.
         self.neighbors: dict[str, list[str]] = {str(i): [] for i in self.ix_ids}
         node2ix = {net.intersections[i].node: i for i in self.ix_ids}
@@ -149,6 +168,7 @@ class TrafficEnv:
         queues = self.sim.queues_by_approach()
         dens = self.sim.density_by_approach()
         obs = {}
+        base = 2 * MAX_APPROACHES + self.max_phases + 1
         for a in self.agents:
             vec = np.zeros(self.obs_dim, dtype=np.float32)
             idxs = self._approach_idx[a][:MAX_APPROACHES]
@@ -157,7 +177,23 @@ class TrafficEnv:
                 vec[MAX_APPROACHES + slot] = dens[ai] / DENSITY_NORM
             unit = self.sim.units[int(a)]
             vec[2 * MAX_APPROACHES + unit.phase] = 1.0
-            vec[-1] = min(unit.traj_time_in_phase / TIME_NORM, 1.0)
+            vec[base - 1] = min(unit.traj_time_in_phase / TIME_NORM, 1.0)
+            if self.obs_version >= 2:
+                p = base
+                vec[p + unit.state] = 1.0                       # GREEN/YELLOW/ALL_RED
+                p += 3
+                for slot, lanes in enumerate(self._approach_lanes[a][:MAX_APPROACHES]):
+                    present = sum(self.sim.vehicles_near_stop(l, PRESENCE_DIST)
+                                  for l in lanes)
+                    vec[p + slot] = min(present / PRESENCE_NORM, 2.0)
+                p += MAX_APPROACHES
+                vec[p] = min(self._elapsed / max(self.episode_ticks, 1), 1.0)
+                p += 1
+                for nslot, nb in enumerate(self.neighbors[a][:MAX_NEIGHBORS]):
+                    nunit = self.sim.units[int(nb)]
+                    vec[p + 2 * nslot] = nunit.phase / max(self.max_phases - 1, 1)
+                    nq = sum(queues[ai] for ai in self._approach_idx[nb])
+                    vec[p + 2 * nslot + 1] = nq / QUEUE_NORM
             obs[a] = vec
         return obs
 
@@ -204,7 +240,8 @@ class TrafficEnv:
         return rewards
 
 
-def make_env(network: str, demand: str, root: str | Path | None = None, **kwargs) -> TrafficEnv:
+def make_env(network: str, demand: str, root: str | Path | None = None,
+             **kwargs) -> TrafficEnv:
     root = Path(root) if root else Path(__file__).resolve().parents[2]
     net_cfg = json.loads((root / "configs/networks" / f"{network}.json").read_text())
     dem_cfg = json.loads((root / "configs/demand" / f"{demand}.json").read_text())

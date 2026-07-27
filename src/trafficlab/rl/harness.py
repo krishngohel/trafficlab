@@ -71,6 +71,8 @@ class RunConfig:
     out_root: str = "runs"
     algo_kwargs: dict = field(default_factory=dict)   # see per-algo defaults
     record_eval_traj: bool = True
+    obs_version: int = 1        # 1 = original 13-dim; 2 = +signal state, presence
+                                # detectors, episode progress, neighbor summary
 
 
 def sanitize_name(name: str) -> str:
@@ -197,10 +199,12 @@ def train(cfg: RunConfig, resume: bool = False) -> dict:
     rng = np.random.default_rng(cfg.seed)       # harness stream: training episode seeds
     env = make_env(cfg.network, cfg.demand, reward=cfg.reward,
                    decision_interval=cfg.decision_interval,
-                   episode_seconds=cfg.episode_seconds)
+                   episode_seconds=cfg.episode_seconds,
+                   obs_version=cfg.obs_version)
     eval_env = make_env(cfg.network, cfg.demand, reward=cfg.reward,
                         decision_interval=cfg.decision_interval,
-                        episode_seconds=cfg.episode_seconds)
+                        episode_seconds=cfg.episode_seconds,
+                        obs_version=cfg.obs_version)
     trainer = importlib.import_module(f"trafficlab.rl.{cfg.algo}").Trainer(cfg, env)
 
     step = 0

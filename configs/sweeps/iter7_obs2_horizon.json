@@ -1,0 +1,22 @@
+{
+  "base": {
+    "algo": "dqn",
+    "network": "single",
+    "demand": "rush",
+    "reward": "queue",
+    "total_steps": 100000,
+    "episode_seconds": 3600.0,
+    "decision_interval": 10.0,
+    "eval_every": 20000,
+    "eval_episodes": 2,
+    "gamma": 0.9,
+    "lr": 0.0003,
+    "seed": 0,
+    "obs_version": 2,
+    "algo_kwargs": {"reward_scale": 0.02, "warmup": 2000}
+  },
+  "grid": {
+    "reward": ["queue", "pressure"],
+    "seed": [0, 1]
+  }
+}

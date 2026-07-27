@@ -84,7 +84,8 @@ def eval_rl(network: str, demand: str, run_dir: str, seed: int,
     policy_name = f"{cfg.algo}:{run.name}"
     env = make_env(network, demand, root=ROOT, reward=cfg.reward,
                    decision_interval=cfg.decision_interval,
-                   episode_seconds=EPISODE_SECONDS)
+                   episode_seconds=EPISODE_SECONDS,
+                   obs_version=getattr(cfg, "obs_version", 1))
     trainer = importlib.import_module(f"trafficlab.rl.{cfg.algo}").Trainer(cfg, env)
     ckpt = torch.load(run / "ckpt_latest.pt", map_location="cpu", weights_only=False)
     # Harness checkpoints keep the full trainer state under extra.trainer
