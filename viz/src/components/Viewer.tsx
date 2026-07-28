@@ -18,6 +18,7 @@ import ExportDialog from "./ExportDialog";
 import SidePanel from "./SidePanel";
 import Toasts, { type Toast } from "./Toasts";
 import WaitHud from "./WaitHud";
+import FpsHud from "./FpsHud";
 import styles from "./Viewer.module.css";
 
 type DragHint = "primary" | "compare" | null;
@@ -46,6 +47,8 @@ export default function Viewer() {
   const [toggles, setToggles] = useState<OverlayToggles>({ ...DEFAULT_TOGGLES });
   const [selectedK, setSelectedK] = useState(0);
   const [panelOpen, setPanelOpen] = useState(true);
+  /** Frame-rate chip; "f" toggles it so exported stills can stay clean. */
+  const [fpsOpen, setFpsOpen] = useState(true);
   const [chartsOpen, setChartsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -238,6 +241,10 @@ export default function Viewer() {
         case "2":
           changeCamera("top");
           break;
+        case "f":
+        case "F":
+          setFpsOpen((v) => !v);
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -376,6 +383,8 @@ export default function Viewer() {
       {engine && infoA && (
         <WaitHud key={infoB ? "compare" : "single"} engine={engine} compare={infoB !== null} />
       )}
+
+      {engine && infoA && fpsOpen && <FpsHud engine={engine} compare={infoB !== null} />}
 
       {recording && (
         <div className={styles.recIndicator}>

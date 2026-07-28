@@ -349,6 +349,18 @@
   color: var(--neg);
 }
 
+.fpsChip {
+  min-width: 148px;
+  gap: 2px;
+}
+
+.fpsMeta {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
 /* The verdict chip sits on the divider's left edge; give it a touch more weight. */
 .waitDelta {
   min-width: 96px;

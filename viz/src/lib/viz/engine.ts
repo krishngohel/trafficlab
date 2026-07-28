@@ -11,6 +11,7 @@ import {
 } from "../scene";
 import { parseTraj, type TrajMeta } from "../traj";
 import { CameraRig, type CameraMode } from "./cameras";
+import { FpsMeter } from "./fps";
 import { PlaybackClock } from "./playback";
 import { CanvasRecorder, downloadBlob, sanitizeFilePart } from "./recorder";
 import { DEFAULT_TOGGLES, SceneView, type OverlayToggles } from "./view";
@@ -57,6 +58,9 @@ declare global {
  */
 export class VizEngine {
   readonly clock = new PlaybackClock();
+
+  /** Smoothed frame-rate, fed every tick and read by the FPS chip. */
+  readonly fpsMeter = new FpsMeter();
 
   /** While true the clock does not advance (a slider/chart is being dragged). */
   private scrubbingFlag = false;
@@ -479,6 +483,7 @@ export class VizEngine {
     const dtReal = Math.min((now - this.lastTime) / 1000, 0.25);
     this.lastTime = now;
     const wallSeconds = now / 1000;
+    this.fpsMeter.sample(dtReal, now);
 
     if (!this.scrubbing) {
       const wasPlaying = this.clock.playing;
