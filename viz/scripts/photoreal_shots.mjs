@@ -43,7 +43,7 @@ page.on("console", (m) => {
 page.on("pageerror", (e) => errors.push(String(e)));
 
 await page.goto(base, { waitUntil: "domcontentloaded" });
-await page.getByRole("button", { name: "Load grid2x2 demo" }).waitFor({ timeout: 30000 });
+await page.getByRole("button", { name: "Load city demo" }).waitFor({ timeout: 30000 });
 await page
   .locator('input[type="file"]')
   .first()

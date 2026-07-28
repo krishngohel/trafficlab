@@ -3,11 +3,19 @@ import { describe, expect, it } from "vitest";
 
 import { buildCarGeometry, carTriangleCount, CAR_LENGTH, CAR_WIDTH } from "./carModel";
 import { buildMixTable, lerpAngle, VehicleLayer } from "./vehicles";
-import { VEHICLE_MODELS, type SceneAssets, type VehicleModelAsset } from "./assets";
+import {
+  VEHICLE_MODELS,
+  VEHICLE_PAINTS,
+  type SceneAssets,
+  type VehicleModelAsset,
+} from "./assets";
 import type { TrajFrame } from "../traj";
 
 /** Minimal TrajFrame with `n` vehicles laid out along +X at y = 0. */
-function frameAt(positions: readonly [number, number][]): TrajFrame {
+function frameAt(
+  positions: readonly [number, number][],
+  flags?: readonly number[],
+): TrajFrame {
   const n = positions.length;
   const f = (fill: number) => new Float32Array(n).fill(fill);
   return {
@@ -20,7 +28,7 @@ function frameAt(positions: readonly [number, number][]): TrajFrame {
     speed: f(10),
     accel: f(0),
     lane: new Int32Array(n),
-    flags: new Uint8Array(n),
+    flags: Uint8Array.from(positions.map((_, i) => flags?.[i] ?? 0)),
     signals: {
       phase: new Uint8Array(0),
       state: new Uint8Array(0),
@@ -267,6 +275,97 @@ describe("VehicleLayer picking", () => {
   });
 });
 
+/** Instance colour of the single vehicle in a one-vehicle frame. */
+function soleColor(layer: VehicleLayer): THREE.Color {
+  const out = new THREE.Color();
+  for (const mesh of layer.meshes) {
+    if (mesh.count === 1) mesh.getColorAt(0, out);
+  }
+  return out;
+}
+
+describe("paint", () => {
+  it("gives a vehicle id the same colour every time, on either side of a compare", () => {
+    const a = new VehicleLayer(fakeAssets(), 256);
+    const b = new VehicleLayer(fakeAssets(), 256);
+    for (const id of [3, 17, 250, 9001]) {
+      const frame = frameAt([[0, 0]]);
+      frame.id[0] = id;
+      a.update(frame, null, 0);
+      b.update(frame, null, 0);
+      expect(soleColor(a).getHex()).toBe(soleColor(b).getHex());
+    }
+  });
+
+  it("spreads a fleet across the palette instead of painting them all alike", () => {
+    const layer = new VehicleLayer(fakeAssets(), 2048);
+    layer.update(
+      frameAt(Array.from({ length: 800 }, (_, i) => [i * 6, 0] as [number, number])),
+      null,
+      0,
+    );
+    const seen = new Set<number>();
+    const color = new THREE.Color();
+    for (const mesh of layer.meshes) {
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getColorAt(i, color);
+        seen.add(color.getHex());
+      }
+    }
+    // Every palette entry should show up in a fleet this size.
+    expect(seen.size).toBe(VEHICLE_PAINTS.length);
+  });
+
+  it("is dominated by the white/black/grey end, like real traffic", () => {
+    const neutral = VEHICLE_PAINTS.filter(({ rgb }) => {
+      const [r, g, b] = rgb;
+      return Math.max(r, g, b) - Math.min(r, g, b) < 0.08;
+    }).reduce((sum, p) => sum + p.weight, 0);
+    const total = VEHICLE_PAINTS.reduce((sum, p) => sum + p.weight, 0);
+    expect(neutral / total).toBeGreaterThan(0.6);
+  });
+});
+
+describe("brake lights", () => {
+  it("carry the frame's braking bit to a per-instance attribute", () => {
+    const layer = new VehicleLayer(fakeAssets(), 64);
+    // bit 0 is braking; bit 1 is a blinker and must not light the lamps.
+    layer.update(
+      frameAt(
+        [
+          [0, 0],
+          [20, 0],
+          [40, 0],
+        ],
+        [1, 0, 2],
+      ),
+      null,
+      0,
+    );
+    const lit: number[] = [];
+    for (const mesh of layer.meshes) {
+      const brake = mesh.geometry.getAttribute("aBrake");
+      for (let i = 0; i < mesh.count; i++) lit.push(brake.getX(i));
+    }
+    expect(lit.filter((v) => v === 1)).toHaveLength(1);
+    expect(lit.filter((v) => v === 0)).toHaveLength(2);
+  });
+
+  it("gives each layer its own attribute, so a comparison does not cross-talk", () => {
+    const assets = fakeAssets();
+    const a = new VehicleLayer(assets, 64);
+    const b = new VehicleLayer(assets, 64);
+    expect(a.meshes[0].geometry).not.toBe(b.meshes[0].geometry);
+    expect(a.meshes[0].geometry.getAttribute("aBrake")).not.toBe(
+      b.meshes[0].geometry.getAttribute("aBrake"),
+    );
+    // ...while still sharing the model's vertex buffers.
+    expect(a.meshes[0].geometry.getAttribute("position")).toBe(
+      b.meshes[0].geometry.getAttribute("position"),
+    );
+  });
+});
+
 describe("velocity coloring", () => {
   it("drives the material's blend uniform instead of multiplying the paint", () => {
     const assets = fakeAssets();
@@ -276,6 +375,19 @@ describe("velocity coloring", () => {
     layer.colorMode = "speed";
     layer.update(frameAt([[0, 0]]), null, 0);
     expect(assets.vehicleTintMix.value).toBe(1);
+  });
+
+  it("overrides the paint colour while it is on, and restores it after", () => {
+    const layer = new VehicleLayer(fakeAssets(), 64);
+    layer.update(frameAt([[0, 0]]), null, 0);
+    const paint = soleColor(layer).getHex();
+    layer.colorMode = "speed";
+    layer.update(frameAt([[0, 0]]), null, 0);
+    const ramp = soleColor(layer).getHex();
+    expect(ramp).not.toBe(paint);
+    layer.colorMode = "id";
+    layer.update(frameAt([[0, 0]]), null, 0);
+    expect(soleColor(layer).getHex()).toBe(paint);
   });
 });
 

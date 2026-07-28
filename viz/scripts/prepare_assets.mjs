@@ -27,6 +27,9 @@ const force = process.argv.includes("--force");
 const KITS = {
   cars: join(src, "kenney_car-kit", "Models", "GLB format"),
   buildings: join(src, "kenney_city-kit-commercial", "Models", "GLB format"),
+  // Same kit as `buildings`, but the kit's own decimated variants — the city
+  // fabric places hundreds of these past the detail radius.
+  lowdetail: join(src, "kenney_city-kit-commercial", "Models", "GLB format"),
   props: join(src, "kenney_city-kit-roads", "Models", "GLB format"),
   trees: join(src, "kenney_nature-kit", "Models", "GLTF format"),
 };
@@ -44,16 +47,53 @@ const MODELS = {
     "police",
     "delivery",
     "truck-flat",
+    // Heavier/rarer traffic: silhouette variety is what sells a crowd.
+    "truck",
+    "delivery-flat",
+    "ambulance",
+    "firetruck",
+    "garbage-truck",
   ],
+  // Full commercial set — 14 mid-rise shells plus 5 towers for the core.
   buildings: [
     "building-a",
     "building-b",
     "building-c",
+    "building-d",
     "building-e",
     "building-f",
     "building-g",
     "building-h",
+    "building-i",
+    "building-j",
     "building-k",
+    "building-l",
+    "building-m",
+    "building-n",
+    "building-skyscraper-a",
+    "building-skyscraper-b",
+    "building-skyscraper-c",
+    "building-skyscraper-d",
+    "building-skyscraper-e",
+  ],
+  // 6-26 KB each: the whole set costs less than one detailed shell.
+  lowdetail: [
+    "low-detail-building-a",
+    "low-detail-building-b",
+    "low-detail-building-c",
+    "low-detail-building-d",
+    "low-detail-building-e",
+    "low-detail-building-f",
+    "low-detail-building-g",
+    "low-detail-building-h",
+    "low-detail-building-i",
+    "low-detail-building-j",
+    "low-detail-building-k",
+    "low-detail-building-l",
+    "low-detail-building-m",
+    "low-detail-building-n",
+    "low-detail-building-wide-a",
+    "low-detail-building-wide-b",
   ],
   // Roads kit: the signal mast and the street lamp.
   props: ["light-curved", "light-square"],
@@ -76,6 +116,7 @@ const MODELS = {
 const ATLAS_KITS = {
   cars: { saturation: 0.62, brightness: 1.02 },
   buildings: null,
+  lowdetail: null,
   props: null,
 };
 
@@ -175,7 +216,7 @@ const walk = (dir, depth = 0) => {
 walk(out);
 
 const perGroup = {};
-for (const group of ["models/cars", "models/buildings", "models/props", "models/trees", "textures", "hdri"]) {
+for (const group of ["models/cars", "models/buildings", "models/lowdetail", "models/props", "models/trees", "textures", "hdri"]) {
   let bytes = 0;
   const dir = join(out, ...group.split("/"));
   const sum = (d) => {

@@ -29,7 +29,7 @@ const fail = (msg) => {
 let failures = 0;
 
 await page.goto(base, { waitUntil: "domcontentloaded" });
-await page.getByRole("button", { name: "Load grid2x2 demo" }).click();
+await page.getByRole("button", { name: "Load city demo" }).click();
 await page.waitForTimeout(2500);
 // Seek mid-file so plenty of vehicles are on screen, then pause via Space.
 await page.evaluate(() => {

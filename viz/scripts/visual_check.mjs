@@ -34,7 +34,7 @@ const shot = async (name) => {
 // `networkidle` never settles reliably against the dev server (the HMR socket
 // stays open), so wait for the app's own landing UI instead.
 await page.goto(base, { waitUntil: "domcontentloaded" });
-await page.getByRole("button", { name: "Load grid2x2 demo" }).waitFor({ timeout: 30000 });
+await page.getByRole("button", { name: "Load city demo" }).waitFor({ timeout: 30000 });
 await shot("00_landing");
 
 // Load fixture through the hidden primary file input.
@@ -136,7 +136,7 @@ try {
 // Split-screen compare: feed the secondary file input.
 try {
   await page.locator('input[type="file"]').nth(1)
-    .setInputFiles(join(process.cwd(), "public", "fixtures", "grid2x2_demo.traj"));
+    .setInputFiles(join(process.cwd(), "public", "fixtures", "city.traj"));
   await page.waitForTimeout(1500);
   await shot("12_compare");
 } catch (e) { console.log("compare load failed:", String(e).slice(0, 200)); }

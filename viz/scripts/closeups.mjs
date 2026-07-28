@@ -1,4 +1,4 @@
-/* Final stills for review: a follow-cam closeup of the car model in the
+﻿/* Final stills for review: a follow-cam closeup of the car model in the
  * environment, and the mean-wait HUD in single + compare mode.
  *
  *   node scripts/closeups.mjs [outDir=../results/gifs] [base=http://localhost:3199]
@@ -41,7 +41,7 @@ const seekFraction = (f) =>
   }, f);
 
 await page.goto(base, { waitUntil: "domcontentloaded" });
-await loadFixture(0, "grid2x2_demo.traj");
+await loadFixture(0, "city.traj");
 await page.waitForTimeout(2500);
 await seekFraction(0.5);
 await page.waitForTimeout(1200);
@@ -92,9 +92,9 @@ await shot("hud_single");
 
 // --- HUD, compare ----------------------------------------------------------
 await page.goto(base, { waitUntil: "domcontentloaded" });
-await loadFixture(0, "pair_fixed.traj");
+await loadFixture(0, "single_fixed.traj");
 await page.waitForTimeout(2500);
-await loadFixture(1, "pair_dqn.traj");
+await loadFixture(1, "single_actuated.traj");
 await page.waitForTimeout(2000);
 await seekFraction(0.62);
 await page.waitForTimeout(1600);

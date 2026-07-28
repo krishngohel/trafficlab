@@ -1,19 +1,28 @@
 import * as THREE from "three";
 
-import { hashSeed, mulberry32, scatterEnvironment, type ScatterOptions } from "./scatter";
+import { cityPlan, type BuildingSpot, type BuildingTier, type TreeSpot } from "./city";
+import { hashSeed, mulberry32 } from "./scatter";
 import type { ModelGeometry, SceneAssets } from "./assets";
 import type { ThemeSpec } from "./theme";
 import type { TrajMeta } from "../traj";
 
 /**
- * Static scenery between the roads: Kenney nature-kit trees and city-kit
- * commercial buildings, one InstancedMesh per model variant (~14 static draw
- * calls) with per-instance scale/rotation jitter.
+ * Everything standing up out of the ground in the city: buildings and trees.
  *
- * Placement comes from `scatter.ts` (pure, seeded by the network name), so the
- * scenery is identical every time a file is opened and matches on both sides of
- * a comparison. Trees sit in a band just off the kerb, buildings further back in
- * the block interiors, turned to face the nearest road.
+ * Placement comes from `city.ts` (pure, seeded by the network name), which fills
+ * the blocks between the streets with rows of buildings fronting the kerb. This
+ * layer only decides which *model* draws each plot, in four tiers that trade
+ * detail for distance:
+ *
+ *   tower      Kenney skyscrapers, downtown core only
+ *   midrise    the 14 full-detail commercial shells, middle ring
+ *   lowdetail  the 16 decimated shells, outer ring and block interiors
+ *   massing    procedural boxes merged into ONE mesh, out to the horizon
+ *
+ * The first three are one InstancedMesh per model variant, all sharing
+ * `assets.buildingMaterial`, so the whole city costs draw calls but not
+ * programs; the fourth costs one call for however many thousand boxes the
+ * horizon needs. Every matrix is written once at load and never touched again.
  *
  * With no asset bundle the layer falls back to the procedural cone-tree and
  * box-pad geometry below, so unit tests and a failed asset fetch still draw
@@ -77,6 +86,32 @@ class PropBuilder {
     this.triangle(a, c, d, color);
   }
 
+  /** Axis-aligned box, base at y0, centred on (cx, cz). */
+  box(
+    cx: number,
+    cz: number,
+    hx: number,
+    hz: number,
+    y0: number,
+    y1: number,
+    color: readonly number[],
+    roof: readonly number[] = color,
+  ): void {
+    const c: number[][] = [];
+    // Corner index = x + 2y + 4z, matching carModel's hexahedron convention.
+    for (const z of [cz - hz, cz + hz]) {
+      for (const y of [y0, y1]) {
+        for (const x of [cx - hx, cx + hx]) c.push([x, y, z]);
+      }
+    }
+    this.quad(c[1], c[3], c[7], c[5], color); // +X
+    this.quad(c[0], c[4], c[6], c[2], color); // -X
+    this.quad(c[2], c[6], c[7], c[3], roof); // +Y
+    this.quad(c[0], c[1], c[5], c[4], color); // -Y
+    this.quad(c[4], c[5], c[7], c[6], color); // +Z
+    this.quad(c[0], c[2], c[3], c[1], color); // -Z
+  }
+
   /** Vertical prism from y0 to y1 (trunk / building box). */
   prism(
     radius: number,
@@ -108,6 +143,10 @@ class PropBuilder {
       this.triangle(pt(j), pt(i), [0, y1, 0], color);
       this.triangle([0, y0, 0], pt(i), pt(j), color); // underside skirt
     }
+  }
+
+  get empty(): boolean {
+    return this.positions.length === 0;
   }
 
   build(): THREE.BufferGeometry {
@@ -143,27 +182,18 @@ export function buildPadGeometry(): THREE.BufferGeometry {
   const b = new PropBuilder();
   const wall = linear(0x6c6a63);
   const roof = linear(0x4a4d52);
-  const h = 0.5;
-  const box = (hx: number, hz: number, y0: number, y1: number, color: readonly number[]) => {
-    // Corner index = x + 2y + 4z, matching carModel's hexahedron convention.
-    const c: number[][] = [];
-    for (const z of [-hz, hz]) for (const y of [y0, y1]) for (const x of [-hx, hx]) c.push([x, y, z]);
-    b.quad(c[1], c[3], c[7], c[5], color); // +X
-    b.quad(c[0], c[4], c[6], c[2], color); // -X
-    b.quad(c[2], c[6], c[7], c[3], color); // +Y
-    b.quad(c[0], c[1], c[5], c[4], color); // -Y
-    b.quad(c[4], c[5], c[7], c[6], color); // +Z
-    b.quad(c[0], c[2], c[3], c[1], color); // -Z
-  };
-  box(h, h, 0, 1.4, wall);
-  box(h * 0.92, h * 0.92, 1.4, 1.45, roof);
+  b.box(0, 0, 0.5, 0.5, 0, 1.4, wall);
+  b.box(0, 0, 0.46, 0.46, 1.4, 1.45, roof);
   return b.build();
 }
 
+/** Wall / roof palette for the merged horizon massing, in sRGB. */
+const MASSING_WALLS = [0x8b8985, 0x94908a, 0x7f8184, 0x969087, 0x84837f, 0x8d8781];
+const MASSING_ROOFS = [0x4b4e54, 0x424446, 0x565148];
+
 /**
- * Scenery for one network. Holds one InstancedMesh per tree variant and per
- * building variant; every matrix is written once at load and never touched
- * again.
+ * Scenery for one network: one InstancedMesh per tree and per building model,
+ * plus a single merged mesh for the distant massing.
  */
 export class EnvironmentLayer {
   readonly group = new THREE.Group();
@@ -171,14 +201,15 @@ export class EnvironmentLayer {
   private readonly owned: THREE.Material[] = [];
   private readonly ownedGeometries: THREE.BufferGeometry[] = [];
 
-  constructor(meta: TrajMeta, assets: SceneAssets | null, options?: ScatterOptions) {
+  constructor(meta: TrajMeta, assets: SceneAssets | null) {
     this.group.name = "environment";
-    const { trees, pads } = scatterEnvironment(meta, options);
+    const plan = cityPlan(meta);
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
     const rand = mulberry32(hashSeed(`${meta.network_name ?? "network"}:models`));
 
     // --- trees --------------------------------------------------------------
+    const trees: TreeSpot[] = plan.trees;
     const treeModels: ModelGeometry[] = assets?.trees?.length
       ? assets.trees
       : [{ name: "cone", geometry: this.own(buildTreeGeometry()), size: new THREE.Vector3(1, 1, 1) }];
@@ -219,42 +250,59 @@ export class EnvironmentLayer {
     }
 
     // --- buildings ------------------------------------------------------------
-    const buildingModels: ModelGeometry[] = assets?.buildings?.length
-      ? assets.buildings
-      : [{ name: "pad", geometry: this.own(buildPadGeometry()), size: new THREE.Vector3(1, 1, 1) }];
+    const fallback: ModelGeometry[] = [
+      { name: "pad", geometry: this.own(buildPadGeometry()), size: new THREE.Vector3(1, 1, 1.45) },
+    ];
+    const tiers: Record<Exclude<BuildingTier, "massing">, ModelGeometry[]> = {
+      tower: assets?.towers?.length ? assets.towers : assets?.buildings?.length ? assets.buildings : fallback,
+      midrise: assets?.buildings?.length ? assets.buildings : fallback,
+      lowdetail: assets?.lowDetailBuildings?.length
+        ? assets.lowDetailBuildings
+        : assets?.buildings?.length
+          ? assets.buildings
+          : fallback,
+    };
     const buildingMaterial =
       assets?.buildingMaterial ??
       this.ownMaterial(
         new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.05, vertexColors: true }),
       );
-    /** Paved lot under each building, so nothing sits straight on lawn. */
-    const aprons: { x: number; y: number; rot: number; size: number }[] = [];
-    const padBuckets: number[][] = buildingModels.map(() => []);
-    for (let i = 0; i < pads.length; i++) {
-      padBuckets[Math.floor(rand() * buildingModels.length) % buildingModels.length].push(i);
+
+    // Bucket every plot by the model that draws it. A footprint-normalized shell
+    // scaled by the plot's frontage comes out `frontage * size.y` tall, so the
+    // model whose natural proportion lands closest to the plot's target height
+    // wins — that, not a scale fudge, is what keeps the rows varied without
+    // turning a 20 m plot into a 50 m tower.
+    const buckets = new Map<string, { model: ModelGeometry; spots: BuildingSpot[] }>();
+    const massing: BuildingSpot[] = [];
+    for (const spot of plan.buildings) {
+      if (spot.tier === "massing") {
+        massing.push(spot);
+        continue;
+      }
+      const models = tiers[spot.tier];
+      const model = chooseModel(models, spot);
+      const key = `${spot.tier}:${model.name}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { model, spots: [] };
+        buckets.set(key, bucket);
+      }
+      bucket.spots.push(spot);
     }
-    for (let m = 0; m < buildingModels.length; m++) {
-      const indices = padBuckets[m];
-      if (indices.length === 0) continue;
-      const model = buildingModels[m];
-      const mesh = new THREE.InstancedMesh(model.geometry, buildingMaterial, indices.length);
-      mesh.name = `buildings:${model.name}`;
+    for (const [key, bucket] of buckets) {
+      const mesh = new THREE.InstancedMesh(bucket.model.geometry, buildingMaterial, bucket.spots.length);
+      mesh.name = `buildings:${key}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      for (let k = 0; k < indices.length; k++) {
-        const p = pads[indices[k]];
-        // The models are normalized to a 1 x 1 footprint, so one uniform scale
-        // sets the plot size and each model keeps its own storey proportions.
-        // A tall model would otherwise turn a 25 m plot into a 50 m tower, so
-        // the plot's own height budget caps it.
-        const scale = Math.min(Math.max(p.width, p.depth), p.height / Math.max(model.size.y, 0.5));
-        dummy.position.set(p.x, 0, -p.y);
-        dummy.rotation.set(0, p.rot, 0);
-        dummy.scale.setScalar(scale);
+      for (let k = 0; k < bucket.spots.length; k++) {
+        const spot = bucket.spots[k];
+        dummy.position.set(spot.x, 0, -spot.y);
+        dummy.rotation.set(0, spot.rot, 0);
+        dummy.scale.setScalar(spot.width);
         dummy.updateMatrix();
         mesh.setMatrixAt(k, dummy.matrix);
-        mesh.setColorAt(k, color.setRGB(p.tint, p.tint, p.tint * 1.03));
-        aprons.push({ x: p.x, y: p.y, rot: p.rot, size: scale * 1.22 });
+        mesh.setColorAt(k, color.setRGB(spot.tint, spot.tint, spot.tint * 1.03));
       }
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -262,52 +310,37 @@ export class EnvironmentLayer {
       this.group.add(mesh);
     }
 
-    // --- paved lots -----------------------------------------------------------
-    // One merged quad per building, a shade of concrete just above the ground
-    // plane: buildings meeting raw grass at a hard edge is the single most
-    // model-viewer-looking thing left in a mid-zoom shot.
-    if (aprons.length > 0) {
-      const positions = new Float32Array(aprons.length * 12);
-      const indices: number[] = [];
-      aprons.forEach((a, i) => {
-        const h = a.size / 2;
-        const cos = Math.cos(a.rot);
-        const sin = Math.sin(a.rot);
-        const corners: [number, number][] = [
-          [-h, -h],
-          [h, -h],
-          [h, h],
-          [-h, h],
-        ];
-        corners.forEach(([cx, cz], v) => {
-          const o = (i * 4 + v) * 3;
-          positions[o] = a.x + cx * cos + cz * sin;
-          positions[o + 1] = 0.015;
-          positions[o + 2] = -a.y - cx * sin + cz * cos;
-        });
-        const base = i * 4;
-        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      });
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geometry.setIndex(indices);
-      geometry.computeVertexNormals();
-      geometry.computeBoundingSphere();
+    // --- distant massing ------------------------------------------------------
+    // Past the model budget the city becomes merged boxes: twelve triangles and
+    // no instance matrix each, one draw call for the whole horizon. At the range
+    // they live at, a box with a darker roof is a building.
+    if (massing.length > 0) {
+      const builder = new PropBuilder();
+      for (const spot of massing) {
+        const wall = new THREE.Color(MASSING_WALLS[Math.floor(rand() * MASSING_WALLS.length)]);
+        const roof = new THREE.Color(MASSING_ROOFS[Math.floor(rand() * MASSING_ROOFS.length)]);
+        const tint = spot.tint;
+        const half = spot.width / 2;
+        // Sim (x, y) -> scene (x, -z). Footprints are axis-aligned out here.
+        builder.box(
+          spot.x,
+          -spot.y,
+          half,
+          half * (0.72 + rand() * 0.5),
+          0,
+          spot.height,
+          [wall.r * tint, wall.g * tint, wall.b * tint],
+          [roof.r * tint, roof.g * tint, roof.b * tint],
+        );
+      }
       const material = this.ownMaterial(
-        new THREE.MeshStandardMaterial({
-          color: 0x8b8880,
-          roughness: 0.95,
-          metalness: 0,
-          side: THREE.DoubleSide,
-          polygonOffset: true,
-          polygonOffsetFactor: -1,
-          polygonOffsetUnits: -1,
-        }),
+        new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0, vertexColors: true }),
       );
-      const lots = new THREE.Mesh(this.own(geometry), material);
-      lots.name = "lots";
-      lots.receiveShadow = true;
-      this.group.add(lots);
+      const mesh = new THREE.Mesh(this.own(builder.build()), material);
+      mesh.name = "massing";
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
     }
   }
 
@@ -319,7 +352,7 @@ export class EnvironmentLayer {
   setShadows(cast: boolean): void {
     this.group.traverse((object) => {
       const mesh = object as THREE.Mesh;
-      if (mesh.isMesh) mesh.castShadow = cast;
+      if (mesh.isMesh && mesh.name !== "massing") mesh.castShadow = cast;
     });
   }
 
@@ -341,11 +374,24 @@ export class EnvironmentLayer {
   }
 }
 
+/**
+ * The model whose natural height at this plot's frontage comes closest to the
+ * plot's target height. Ties are broken with the plot's own seeded `pick`, so
+ * neighbouring plots of the same size still get different shells.
+ */
+export function chooseModel(models: readonly ModelGeometry[], spot: BuildingSpot): ModelGeometry {
+  if (models.length === 1) return models[0];
+  const ranked = models
+    .map((model) => ({ model, error: Math.abs(spot.width * model.size.y - spot.height) }))
+    .sort((a, b) => a.error - b.error || (a.model.name < b.model.name ? -1 : 1));
+  const shortlist = Math.min(3, ranked.length);
+  return ranked[Math.floor(spot.pick * shortlist) % shortlist].model;
+}
+
 /** Build the scenery group for one network. */
 export function buildEnvironment(
   meta: TrajMeta,
   assets: SceneAssets | null = null,
-  options?: ScatterOptions,
 ): EnvironmentLayer {
-  return new EnvironmentLayer(meta, assets, options);
+  return new EnvironmentLayer(meta, assets);
 }

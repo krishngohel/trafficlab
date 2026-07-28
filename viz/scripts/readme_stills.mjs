@@ -1,9 +1,9 @@
-/* Capture README stills from the live viewer (headless, same rig as
+﻿/* Capture README stills from the live viewer (headless, same rig as
  * visual_check.mjs). Writes PNGs into ../results/gifs.
  *
  *   node scripts/readme_stills.mjs [--only charts|follow] [--base http://localhost:3199]
  *
- * charts_panel.png  grid2x2_demo.traj, charts panel open, playhead mid-file.
+ * charts_panel.png  city.traj, charts panel open, playhead mid-file.
  * follow_cam.png    stress.traj, chase camera locked to a vehicle, ribbon on.
  *                   Follow needs a vehicle under the cursor, so the script
  *                   sweeps click points until the panel reports a lock, then
@@ -74,7 +74,7 @@ if (only === "all" || only === "charts") {
   const zoom = parseFloat(arg("zoom", "0"));
   const dragY = parseFloat(arg("dragy", "0"));
   const name = arg("name", "charts_panel.png");
-  await load("grid2x2_demo.traj");
+  await load("city.traj");
   await overlay("Queue heatmap");
   await overlay("Signal phase timers");
   await page.getByRole("button", { name: "Charts", exact: true }).click();
@@ -234,7 +234,7 @@ if (only === "all" || only === "follow") {
   if (until > 0) {
     const frameNow = () => page.evaluate(() => {
       const el = [...document.querySelectorAll("span")].find(
-        (s) => /·\s*f\s*\d+\s*\//.test(s.textContent || ""));
+        (s) => /Â·\s*f\s*\d+\s*\//.test(s.textContent || ""));
       const m = el && (el.textContent || "").match(/f\s*(\d+)\s*\//);
       return m ? Number(m[1]) : -1;
     });

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -131,12 +131,12 @@ describe("scanMeta", () => {
     expectScanMatchesFrames(loadFixture("synthetic.traj"), [0, 1, 137, 240, 479]);
   });
 
-  it("matches full frame decodes on grid2x2_demo.traj", () => {
-    expectScanMatchesFrames(loadFixture("grid2x2_demo.traj"), [0, 1, 450, 900, 1350, 1799]);
+  it("matches full frame decodes on city.traj", () => {
+    expectScanMatchesFrames(loadFixture("city.traj"), [0, 1, 450, 900, 1350, 1799]);
   });
 
-  it("has monotonic ticks on grid2x2_demo.traj", () => {
-    const scan = scanMeta(parseTraj(loadFixture("grid2x2_demo.traj")));
+  it("has monotonic ticks on city.traj", () => {
+    const scan = scanMeta(parseTraj(loadFixture("city.traj")));
     for (let i = 0; i < scan.numFrames; i++) expect(scan.ticks[i]).toBe(i);
   });
 

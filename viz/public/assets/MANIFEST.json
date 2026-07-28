@@ -10,17 +10,51 @@
       "taxi",
       "police",
       "delivery",
-      "truck-flat"
+      "truck-flat",
+      "truck",
+      "delivery-flat",
+      "ambulance",
+      "firetruck",
+      "garbage-truck"
     ],
     "buildings": [
       "building-a",
       "building-b",
       "building-c",
+      "building-d",
       "building-e",
       "building-f",
       "building-g",
       "building-h",
-      "building-k"
+      "building-i",
+      "building-j",
+      "building-k",
+      "building-l",
+      "building-m",
+      "building-n",
+      "building-skyscraper-a",
+      "building-skyscraper-b",
+      "building-skyscraper-c",
+      "building-skyscraper-d",
+      "building-skyscraper-e"
+    ],
+    "lowdetail": [
+      "low-detail-building-a",
+      "low-detail-building-b",
+      "low-detail-building-c",
+      "low-detail-building-d",
+      "low-detail-building-e",
+      "low-detail-building-f",
+      "low-detail-building-g",
+      "low-detail-building-h",
+      "low-detail-building-i",
+      "low-detail-building-j",
+      "low-detail-building-k",
+      "low-detail-building-l",
+      "low-detail-building-m",
+      "low-detail-building-n",
+      "low-detail-building-wide-a",
+      "low-detail-building-wide-b"
     ],
     "props": [
       "light-curved",
@@ -36,12 +70,13 @@
     ]
   },
   "bytes": {
-    "models/cars": 1942001,
-    "models/buildings": 1147010,
+    "models/cars": 3067101,
+    "models/buildings": 3493670,
+    "models/lowdetail": 221326,
     "models/props": 25150,
     "models/trees": 64040,
     "textures": 1763002,
     "hdri": 3252772
   },
-  "total": 8195489
+  "total": 11888575
 }

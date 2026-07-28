@@ -1,7 +1,12 @@
 import * as THREE from "three";
 import { ASPHALT_REPEAT, GRASS_REPEAT, type SceneAssets } from "./assets";
+import { cityPlan, type CityRect, type CityStreet } from "./city";
+import { groundPlaneSize, intersectionRadii, networkBounds, type NetworkBounds } from "./network";
 import type { ThemeSpec } from "./theme";
 import type { TrajLane, TrajMeta } from "../traj";
+
+export { groundPlaneSize, intersectionRadii, networkBounds };
+export type { NetworkBounds };
 
 /**
  * Static road geometry built from the .traj meta network.
@@ -18,7 +23,9 @@ import type { TrajLane, TrajMeta } from "../traj";
  * intersection discs, white markings, yellow centre lines.
  */
 
+const LOT_Y = 0.008;
 const VERGE_Y = 0.012;
+const WALK_Y = 0.016;
 const LANE_Y = 0.02;
 const NODE_Y = 0.03;
 const MARK_Y = 0.05;
@@ -34,89 +41,6 @@ const DASH_OFF = 3.4;
 /** How far the painted edge line sits inside the lane border (m). */
 const EDGE_INSET = 0.3;
 const STOP_BAR_DEPTH = 0.9;
-
-/**
- * Edge length of the ground plane. It has to reach past anything the camera can
- * frame, but stay *inside* the horizon haze band (see `haze.ts`), which is what
- * hides its edge — a plane that pokes through the haze cuts a visible line
- * across the horizon at overview zoom.
- */
-export function groundPlaneSize(bounds: NetworkBounds): number {
-  return Math.max(bounds.extent * 5, 3000);
-}
-
-export interface NetworkBounds {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  centerX: number;
-  centerY: number;
-  extent: number;
-}
-
-export function networkBounds(meta: TrajMeta): NetworkBounds {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const lane of meta.network.lanes) {
-    for (const [x, y] of lane.polyline) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  for (const node of meta.network.nodes) {
-    if (node.x < minX) minX = node.x;
-    if (node.x > maxX) maxX = node.x;
-    if (node.y < minY) minY = node.y;
-    if (node.y > maxY) maxY = node.y;
-  }
-  if (!Number.isFinite(minX)) {
-    minX = maxX = minY = maxY = 0;
-  }
-  return {
-    minX,
-    maxX,
-    minY,
-    maxY,
-    centerX: (minX + maxX) / 2,
-    centerY: (minY + maxY) / 2,
-    extent: Math.max(maxX - minX, maxY - minY, 1),
-  };
-}
-
-/**
- * Radius of each intersection node's paved disc: distance from the node to
- * the nearest endpoint of every lane on links touching it, plus half a lane
- * width. Keyed by node id. Shared by road building and the pressure overlay.
- */
-export function intersectionRadii(meta: TrajMeta): Map<number, number> {
-  const laneById = new Map(meta.network.lanes.map((l) => [l.id, l]));
-  const radii = new Map<number, number>();
-  for (const node of meta.network.nodes) {
-    if (node.type !== "intersection") continue;
-    let radius = 0;
-    for (const link of meta.network.links) {
-      if (link.from_node !== node.id && link.to_node !== node.id) continue;
-      for (const laneId of link.lanes) {
-        const lane = laneById.get(laneId);
-        if (!lane || lane.polyline.length === 0) continue;
-        const first = lane.polyline[0];
-        const last = lane.polyline[lane.polyline.length - 1];
-        const dNear = Math.min(
-          Math.hypot(first[0] - node.x, first[1] - node.y),
-          Math.hypot(last[0] - node.x, last[1] - node.y),
-        );
-        radius = Math.max(radius, dNear + lane.width / 2);
-      }
-    }
-    radii.set(node.id, radius > 0 ? radius : 8);
-  }
-  return radii;
-}
 
 /** Sim-space stop-line anchor for one approach (an incoming link). */
 export interface ApproachAnchor {
@@ -369,6 +293,10 @@ export class RoadLayer {
   private readonly asphalt: THREE.MeshStandardMaterial;
   private readonly verge: THREE.MeshStandardMaterial;
   private readonly node: THREE.MeshStandardMaterial;
+  private readonly walk: THREE.MeshStandardMaterial;
+  private readonly lot: THREE.MeshStandardMaterial;
+  /** Concrete tint scale: 1 with the PBR set loaded, dimmed without it. */
+  private readonly concrete: number;
   private readonly marking: THREE.MeshBasicMaterial | null;
   private readonly centerLine: THREE.MeshBasicMaterial | null;
 
@@ -411,6 +339,8 @@ export class RoadLayer {
     const nodes = new FlatGeoBuilder(ASPHALT_REPEAT);
     const markings = new FlatGeoBuilder();
     const centerLines = new FlatGeoBuilder();
+    const walks = new FlatGeoBuilder(ASPHALT_REPEAT * 0.42);
+    const blockLots = new FlatGeoBuilder(ASPHALT_REPEAT);
 
     // Asphalt ribbons (one per lane, slightly wider than the lane) over a
     // gravel verge, so the tarmac does not butt straight into lawn.
@@ -515,6 +445,77 @@ export class RoadLayer {
       }
     }
 
+    // --- the city around the simulation ---------------------------------------
+    // Filler streets feed the SAME builders as the simulated ones, so they end
+    // up in the same merged meshes with the same asphalt, the same verge and the
+    // same paint: zero extra draw calls and a seamless join where a boundary
+    // stub turns into a street that just keeps going. `city.ts` has already
+    // clipped every run out of the simulated road's footprint.
+    const plan = cityPlan(meta);
+    const streetPts = (s: CityStreet, offset = 0): [number, number][] =>
+      s.axis === 0
+        ? [
+            [s.c + offset, s.a],
+            [s.c + offset, s.b],
+          ]
+        : [
+            [s.a, s.c + offset],
+            [s.b, s.c + offset],
+          ];
+    for (const street of plan.streets) {
+      // The run carries its own carriageway width, inherited from whichever
+      // simulated corridor it continues, so the paint has to be laid out per
+      // street rather than once for the network.
+      const carriageway = street.half - SHOULDER;
+      const laneWidth = carriageway / street.lanes;
+      asphalt.addStrip(streetPts(street), street.half * 2, LANE_Y);
+      verge.addStrip(streetPts(street), (street.half + VERGE) * 2, VERGE_Y);
+      // Double centre line, matching the sim's opposing-link pair exactly.
+      for (const offset of [0.16, -0.16, 0.52, -0.52]) {
+        centerLines.addStrip(streetPts(street, offset), 0.16, MARK_Y);
+      }
+      for (const side of [1, -1]) {
+        markings.addStrip(
+          streetPts(street, side * (carriageway - EDGE_INSET)),
+          EDGE_LINE_WIDTH,
+          MARK_Y,
+        );
+        if (!street.detail) continue;
+        for (let k = 1; k < street.lanes; k++) {
+          markings.addDashedStrip(
+            streetPts(street, side * k * laneWidth),
+            DASH_LINE_WIDTH,
+            MARK_Y,
+            DASH_ON,
+            DASH_OFF,
+          );
+        }
+      }
+    }
+    for (const junction of plan.nodes) {
+      nodes.addDisc(junction.x, junction.y, junction.radius * 1.2, NODE_Y);
+      verge.addDisc(junction.x, junction.y, junction.radius * 1.2 + VERGE, VERGE_Y);
+    }
+
+    // Sidewalks down both flanks of every street (simulated ones included) with
+    // a square pad closing each corner, and paved interiors for the blocks in
+    // between: without them the city reads as buildings standing in a meadow.
+    for (const walk of plan.sidewalks) {
+      walks.addStrip(streetPts(walk), walk.half * 2, WALK_Y);
+    }
+    const addRect = (builder: FlatGeoBuilder, rect: CityRect, y: number) =>
+      builder.addRect(
+        (rect.x0 + rect.x1) / 2,
+        (rect.y0 + rect.y1) / 2,
+        1,
+        0,
+        Math.abs(rect.x1 - rect.x0),
+        Math.abs(rect.y1 - rect.y0),
+        y,
+      );
+    for (const corner of plan.corners) addRect(walks, corner, WALK_Y);
+    for (const lot of plan.lots) addRect(blockLots, lot, LOT_Y);
+
     // --- asphalt + intersections --------------------------------------------
     this.asphalt = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -571,6 +572,35 @@ export class RoadLayer {
       nodeMesh.receiveShadow = true;
       group.add(nodeMesh);
     }
+    // --- sidewalks + block interiors ------------------------------------------
+    // Both reuse the asphalt PBR set: a bright tint on the same albedo reads as
+    // poured concrete, and sharing the maps costs nothing at load time.
+    this.walk = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
+    this.lot = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0 });
+    this.concrete = assets ? 1 : 0.3;
+    if (assets) {
+      this.walk.map = assets.asphalt.map;
+      this.walk.normalMap = assets.asphalt.normalMap;
+      this.walk.roughnessMap = assets.asphalt.roughnessMap;
+      this.walk.normalScale.set(0.35, 0.35);
+      // Block interiors carpet square kilometres of screen, so they get the
+      // albedo and nothing else: at this scale a normal map is invisible and a
+      // fourth texture fetch across most of the frame is not free.
+      this.lot.map = assets.asphalt.map;
+    }
+    if (!walks.empty) {
+      const walkMesh = new THREE.Mesh(walks.build(), this.walk);
+      walkMesh.name = "sidewalks";
+      walkMesh.receiveShadow = true;
+      group.add(walkMesh);
+    }
+    if (!blockLots.empty) {
+      const lotMesh = new THREE.Mesh(blockLots.build(), this.lot);
+      lotMesh.name = "blocks";
+      lotMesh.receiveShadow = true;
+      group.add(lotMesh);
+    }
+
     this.marking = markings.empty ? null : markingMaterial(0xffffff);
     this.centerLine = centerLines.empty ? null : markingMaterial(0xffffff);
     if (this.marking) group.add(new THREE.Mesh(markings.build(), this.marking));
@@ -585,6 +615,11 @@ export class RoadLayer {
     this.node.color.setRGB(a * 1.12, a * 1.12, a * 1.14);
     // Dust/gravel: warmer and lighter than the tarmac it borders.
     this.verge.color.setRGB(a * 0.82, a * 0.76, a * 0.62);
+    // Concrete: the same albedo map pushed well past 1, so it reads pale. With
+    // no texture loaded the colour *is* the albedo, so it has to come back down.
+    const c = a * this.concrete;
+    this.walk.color.setRGB(c * 2.6, c * 2.62, c * 2.66);
+    this.lot.color.setRGB(c * 1.4, c * 1.44, c * 1.52);
     this.marking?.color.setHex(spec.markingColor);
     this.centerLine?.color.setHex(spec.centerLineColor);
   }

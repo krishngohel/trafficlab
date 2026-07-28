@@ -1,4 +1,4 @@
-/* Confirms the FPS chip reports a live, plausible rate and toggles with "f". */
+﻿/* Confirms the FPS chip reports a live, plausible rate and toggles with "f". */
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

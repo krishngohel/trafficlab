@@ -1,4 +1,4 @@
-/* Drive the app's own video export and convert to GIF for the README.
+﻿/* Drive the app's own video export and convert to GIF for the README.
  *
  *   node scripts/export_gif.mjs --a <traj> [--b <traj>] [--seek 0.45]
  *        [--speed 4] [--secs 12] [--out name.gif] [--base http://localhost:3199]
@@ -16,7 +16,7 @@ const arg = (k, d) => {
   const i = process.argv.indexOf("--" + k);
   return i > 0 ? process.argv[i + 1] : d;
 };
-const fileA = arg("a", "grid2x2_demo.traj");
+const fileA = arg("a", "city.traj");
 const fileB = arg("b", null);
 const seek = parseFloat(arg("seek", "0.45"));
 const speed = arg("speed", "4");

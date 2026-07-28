@@ -1,19 +1,24 @@
 import * as THREE from "three";
 import { buildCarGeometry, CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH } from "./carModel";
 import { speedColor, type RGB } from "../ramps";
-import type { SceneAssets, VehicleModelAsset } from "./assets";
+import { VEHICLE_PAINTS, type SceneAssets, type VehicleModelAsset } from "./assets";
 import type { TrajFrame, TrajMeta } from "../traj";
 
 /**
  * The traffic fleet: ONE InstancedMesh per vehicle model (Kenney car kit,
- * merged to a single geometry each), so a thousand cars cost ~10 draw calls
+ * merged to a single geometry each), so a thousand cars cost ~15 draw calls
  * while still looking like a mixed street rather than a swarm of clones.
  *
- * Each vehicle id hashes deterministically into the weighted model mix, so a
- * car keeps its body across seeks and matches on both sides of a comparison.
- * Bodywork colour is whatever the model's atlas bakes in; the velocity overlay
- * *blends* the per-instance colour over it through the material's `uTintMix`
- * uniform (see `assets.withTintMix`) instead of multiplying it away.
+ * Each vehicle id hashes deterministically into the weighted model mix and,
+ * separately, into the paint palette — so a car keeps both its body and its
+ * colour across seeks and matches on both sides of a comparison. The paint
+ * rides on the per-instance colour and the material masks it to the bodywork
+ * (see `assets.withVehicleShading`), which leaves glass, tyres and liveries
+ * alone. The velocity overlay reuses the same per-instance colour and *blends*
+ * it over the whole car through the material's `uTintMix` uniform.
+ *
+ * `flags` bit 0 is the sim's braking bit; it rides to the shader on a
+ * per-instance `aBrake` attribute that lights the tail lamps.
  *
  * With no asset bundle (unit tests, or a failed asset fetch) the layer falls
  * back to the procedural low-poly car in `carModel.ts` — one mesh, same API.
@@ -23,6 +28,8 @@ const TWO_PI = Math.PI * 2;
 /** Power-of-two lookup table turning a hashed id into a model index. */
 const MIX_TABLE_BITS = 10;
 const MIX_TABLE_SIZE = 1 << MIX_TABLE_BITS;
+/** `TrajFrame.flags` bit 0: the vehicle is braking. */
+const FLAG_BRAKING = 1;
 
 export type VehicleColorMode = "id" | "speed";
 
@@ -47,8 +54,20 @@ function hashId(id: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+/** Paint colours are a second, independent draw from the same id. */
+function paintHash(id: number): number {
+  return hashId((id ^ 0x5f356495) | 0);
+}
+
+/** Flat linear-rgb palette, indexed by `paintTable` (3 floats per entry). */
+const PAINT_RGB = new Float32Array(VEHICLE_PAINTS.length * 3);
+for (let i = 0; i < VEHICLE_PAINTS.length; i++) PAINT_RGB.set(VEHICLE_PAINTS[i].rgb, i * 3);
+const PAINT_TABLE = buildWeightedTable(VEHICLE_PAINTS);
+
 interface TypeMesh {
   mesh: THREE.InstancedMesh;
+  /** Per-instance braking flags feeding the tail-lamp glow. */
+  brake: THREE.InstancedBufferAttribute;
   /** Half-diagonal of one instance, padding for the bounding sphere. */
   radius: number;
   count: number;
@@ -69,6 +88,14 @@ export class VehicleLayer {
   private readonly types: TypeMesh[] = [];
   /** hash -> model index, precomputed from the model weights. */
   private readonly mixTable: Uint8Array;
+  /**
+   * Per-layer geometry wrappers. The model geometries are shared by every view,
+   * so the per-instance braking attribute cannot live on them; each layer gets
+   * its own BufferGeometry that re-uses the shared attributes and adds its own.
+   */
+  private readonly ownGeometries: THREE.BufferGeometry[] = [];
+  /** Source geometries this layer built itself (the procedural fallback only). */
+  private readonly fallbackGeometries: THREE.BufferGeometry[] = [];
   private readonly ownMaterial: THREE.Material | null;
   private readonly tintMix: { value: number } | null;
   private readonly dummy = new THREE.Object3D();
@@ -120,10 +147,16 @@ export class VehicleLayer {
         capacity,
         Math.max(48, Math.ceil(((capacity * model.weight) / total) * 2)),
       );
-      const mesh = new THREE.InstancedMesh(model.geometry, material, share);
+      const geometry = instanceGeometry(model.geometry, share);
+      this.ownGeometries.push(geometry);
+      if (this.ownMaterial) this.fallbackGeometries.push(model.geometry);
+      const mesh = new THREE.InstancedMesh(geometry, material, share);
       mesh.name = `vehicles:${model.name}`;
       mesh.frustumCulled = false;
       mesh.castShadow = true;
+      // Not receiveShadow: at this shadow-map resolution a car's own cast
+      // shadow lands back on its flanks and blacks out everything below the
+      // beltline, which costs far more than the shadow it would pick up.
       mesh.receiveShadow = false;
       mesh.setColorAt(0, this.color.setRGB(1, 1, 1));
       mesh.count = 0;
@@ -137,6 +170,7 @@ export class VehicleLayer {
       this.group.add(mesh);
       this.types.push({
         mesh,
+        brake: geometry.getAttribute("aBrake") as THREE.InstancedBufferAttribute,
         radius: Math.hypot(model.size.x, model.size.y, model.size.z) / 2,
         count: 0,
         minX: 0,
@@ -244,6 +278,8 @@ export class VehicleLayer {
       if (z < type.minZ) type.minZ = z;
       if (z > type.maxZ) type.maxZ = z;
 
+      type.brake.array[slot] = a.flags[i] & FLAG_BRAKING ? 1 : 0;
+
       if (speedMode) {
         const lane = a.lane[i];
         const limit = lane < nLimits && limits[lane] > 0 ? limits[lane] : this.fallbackLimit;
@@ -251,9 +287,16 @@ export class VehicleLayer {
         type.mesh.setColorAt(slot, this.color.setRGB(this.rgb.r, this.rgb.g, this.rgb.b));
       } else if (this.tintMix === null) {
         // Fallback material multiplies instanceColor in, so a slot left over
-        // from speed mode has to be reset. The real material blends by
-        // `uTintMix`, which is 0 here, so its instance colors are ignored.
+        // from speed mode has to be reset — the fallback car has no paint mask.
         type.mesh.setColorAt(slot, this.color.setRGB(1, 1, 1));
+      } else {
+        // Paint. The material masks this to the bodywork, so liveries and glass
+        // are unaffected; it is also what the velocity ramp overwrites above.
+        const p = PAINT_TABLE[paintHash(a.id[i]) & (MIX_TABLE_SIZE - 1)] * 3;
+        type.mesh.setColorAt(
+          slot,
+          this.color.setRGB(PAINT_RGB[p], PAINT_RGB[p + 1], PAINT_RGB[p + 2]),
+        );
       }
     }
 
@@ -263,6 +306,7 @@ export class VehicleLayer {
       mesh.count = type.count;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      type.brake.needsUpdate = true;
       // Keep each instance bounding sphere in step with its instances: three
       // caches it forever once computed, and InstancedMesh.raycast rejects the
       // whole mesh when the sphere misses.
@@ -357,36 +401,69 @@ export class VehicleLayer {
 
   dispose(): void {
     for (const mesh of this.meshes) mesh.dispose();
-    // Model geometries and the atlas material are shared with every other view,
-    // so only a locally built fallback material is ours to free.
+    // Model geometries and the atlas material are shared with every other view.
+    // Each wrapper is ours, but its vertex attributes are not: drop the shared
+    // ones first so disposing frees only this layer's `aBrake` buffer.
+    for (const geometry of this.ownGeometries) {
+      for (const name of Object.keys(geometry.attributes)) {
+        if (name !== "aBrake") geometry.deleteAttribute(name);
+      }
+      geometry.setIndex(null);
+      geometry.dispose();
+    }
+    this.ownGeometries.length = 0;
+    // Only a locally built fallback material — and its geometry — is ours.
     this.ownMaterial?.dispose();
     if (this.ownMaterial) {
-      for (const mesh of this.meshes) mesh.geometry.dispose();
+      for (const model of this.fallbackGeometries) model.dispose();
     }
+    this.fallbackGeometries.length = 0;
     this.meshes.length = 0;
     this.types.length = 0;
     this.group.clear();
   }
 }
 
-/** Weighted hash -> model-index lookup table (exported for the unit tests). */
-export function buildMixTable(models: readonly { weight: number }[]): Uint8Array {
+/**
+ * A per-layer geometry that shares the model's vertex buffers (so the GPU still
+ * stores one copy of each car) but carries this layer's own per-instance
+ * braking attribute, which an InstancedMesh can only read off its geometry.
+ */
+function instanceGeometry(source: THREE.BufferGeometry, count: number): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  for (const [name, attribute] of Object.entries(source.attributes)) {
+    geometry.setAttribute(name, attribute);
+  }
+  if (source.index) geometry.setIndex(source.index);
+  geometry.setAttribute("aBrake", new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
+  source.computeBoundingBox();
+  source.computeBoundingSphere();
+  geometry.boundingBox = source.boundingBox;
+  geometry.boundingSphere = source.boundingSphere;
+  return geometry;
+}
+
+/** Weighted hash -> index lookup table over a `MIX_TABLE_SIZE` hash space. */
+export function buildWeightedTable(entries: readonly { weight: number }[]): Uint8Array {
   const table = new Uint8Array(MIX_TABLE_SIZE);
-  const total = models.reduce((sum, m) => sum + m.weight, 0) || 1;
+  const total = entries.reduce((sum, m) => sum + m.weight, 0) || 1;
   let cursor = 0;
-  for (let k = 0; k < models.length; k++) {
+  for (let k = 0; k < entries.length; k++) {
     const end =
-      k === models.length - 1
+      k === entries.length - 1
         ? MIX_TABLE_SIZE
         : Math.min(
             MIX_TABLE_SIZE,
-            cursor + Math.round((models[k].weight / total) * MIX_TABLE_SIZE),
+            cursor + Math.round((entries[k].weight / total) * MIX_TABLE_SIZE),
           );
     table.fill(k, cursor, end);
     cursor = end;
   }
   return table;
 }
+
+/** Weighted hash -> model-index lookup table (exported for the unit tests). */
+export const buildMixTable = buildWeightedTable;
 
 /** The procedural low-poly car, wrapped as a model asset. */
 function fallbackModel(): VehicleModelAsset {
