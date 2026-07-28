@@ -32,11 +32,22 @@ FREE_GAP = 1e9
 LC_FORBID_NEAR = 12.0  # no lane changes in the last metres before the stop line
 GIVE_UP_DIST = 15.0    # wrong-lane fallback: re-pick movement this close to the line
 
+# Off-street trip ends (docs/PARKING_DESIGN.md). Inert unless the network
+# carries driveways.
+CRITICAL_GAP = 5.5     # s: lag headway an exiting vehicle demands on the street
+MIN_CRITICAL_GAP = 3.0  # s: fully relaxed gap after MAX_WAIT of waiting
+MAX_WAIT = 60.0        # s of waiting after which the critical gap is fully relaxed
+PARK_DWELL = 2.0       # s at rest inside the garage before the vehicle is removed
+PARK_ARRIVE_DIST = 4.5  # m from the driveway end that counts as "in the garage".
+# IDM settles a stopped vehicle at gap == s0 behind the virtual wall, i.e. at
+# s0 (<= 2.5) + STOP_MARGIN from the lane end, so this must exceed that.
+
 
 class Vehicle:
     __slots__ = ("id", "kind", "elem", "s", "v", "acc", "p", "movement",
                  "next_conn", "needs_lane", "lc_cooldown", "entered_tick",
-                 "delay", "wait", "committed")
+                 "delay", "wait", "committed", "dist", "park_after",
+                 "park_dwell", "gap_wait")
 
     def __init__(self, vid: int, lane: int, params: DriverParams, tick: int):
         self.id = vid
@@ -54,6 +65,10 @@ class Vehicle:
         self.delay = 0.0
         self.wait = 0.0
         self.committed = False       # passed the point of no return on a yellow
+        self.dist = 0.0              # cumulative metres travelled
+        self.park_after = math.inf   # metres after which it looks for a garage
+        self.park_dwell = 0.0        # s spent at rest inside a garage
+        self.gap_wait = 0.0          # s spent waiting for a gap at a driveway
 
 
 class _Shifted:
@@ -103,9 +118,29 @@ class Simulator:
             self._feeders.setdefault(conn.to_lane, []).append(cid)
             key = (network.lanes[conn.from_lane].link, conn.movement)
             self._movement_conns.setdefault(key, []).append(cid)
+        # Off-street trip ends: lane -> what sits at its far end, plus the
+        # driveway lookup tables. All empty (and every branch inert) unless the
+        # network config asked for parking.
+        self._lane_end_type: dict[int, str] = {
+            lid: network.nodes[network.links[lane.link].to_node].type
+            for lid, lane in network.lanes.items()}
+        self._has_parking = bool(network.driveways)
+        self._park_lanes: set[int] = set()      # driveway lanes ending in a garage
+        self._exit_lanes: set[int] = set()      # driveway lanes leaving a garage
+        self._exit_conns: dict[int, object] = {}  # connection id -> Driveway
+        for jid in sorted(network.driveways):
+            dw = network.driveways[jid]
+            self._park_lanes.add(dw.in_lane)
+            self._exit_lanes.add(dw.out_lane)
+            for cid in network.lane_connections.get(dw.out_lane, ()):
+                self._exit_conns[cid] = dw
         # Counters
         self.spawned = 0
         self.departed = 0
+        self.parked = 0
+        # Diagnostic: seconds each vehicle spent yielding at a driveway stop
+        # line before it got out (one entry per garage departure).
+        self.driveway_waits: list[float] = []
         self.crossings = {ix_id: 0 for ix_id in sorted(network.intersections)}
         self.cum_delay = 0.0
         self.wait_by_approach = np.zeros(len(self._approaches))
@@ -149,6 +184,8 @@ class Simulator:
         self._lane_changes(accels)
         self._integrate(accels)
         self._account()
+        if self._has_parking:
+            self._park()
         if self._writer is not None:
             self._write_frame()
         self.tick += 1
@@ -181,8 +218,11 @@ class Simulator:
             if gap < params.s0 + 2.0:
                 return False
             v_init = min(v_init, max(0.0, math.sqrt(max(0.0, 2.0 * params.b * (gap - params.s0)))))
+        if lane_id in self._exit_lanes:
+            v_init = 0.0                        # starts parked, at the back of the driveway
         veh = Vehicle(self._next_id, lane_id, params, self.tick)
         veh.v = v_init
+        veh.park_after = self.demand.park_after()
         self._next_id += 1
         self.vehicles[veh.id] = veh
         self._decide_route(veh)
@@ -192,14 +232,25 @@ class Simulator:
         return True
 
     def _decide_route(self, veh: Vehicle) -> None:
-        """Pick movement + connection for the intersection at the end of veh's lane."""
+        """Pick movement + connection for the node at the end of veh's lane."""
         lane = self.net.lanes[veh.elem]
         link = self.net.links[lane.link]
-        node = self.net.nodes[link.to_node]
+        end = self._lane_end_type[veh.elem]
         veh.movement = None
         veh.next_conn = None
         veh.needs_lane = None
-        if node.type == "boundary":
+        if end == "boundary" or end == "parking":
+            return                              # despawn / park at the far end
+        if end == "junction":
+            # Uncontrolled junction: go through, unless the trip is long enough
+            # that the vehicle wants the next driveway on its right.
+            if veh.dist >= veh.park_after:
+                veh.movement = "right"
+                self._resolve_connection(veh, "right")
+                if veh.next_conn is not None or veh.needs_lane is not None:
+                    return
+            veh.movement = "through"
+            self._resolve_connection(veh, "through")
             return
         ix_id = self._node2ix[link.to_node]
         movement = self.demand.turn_for(ix_id, link.id)
@@ -275,6 +326,8 @@ class Simulator:
         if veh.next_conn is None:
             return max(0.0, d_stop - STOP_MARGIN)      # wrong lane / no legal movement
         ix_id = self.net.connections[veh.next_conn].intersection
+        if ix_id < 0:
+            return self._junction_gap(veh, d_stop)     # uncontrolled: gap acceptance
         unit = self.units[ix_id]
         state = unit.signal_for(veh.next_conn)
         if state == GREEN:
@@ -294,6 +347,48 @@ class Simulator:
             return max(0.0, d_stop - STOP_MARGIN)
         return max(0.0, d_stop - STOP_MARGIN)
 
+    # ------------------------------------------------- uncontrolled junctions
+    def critical_gap(self, veh: Vehicle) -> float:
+        """Lag headway this vehicle demands, relaxed linearly from CRITICAL_GAP
+        toward MIN_CRITICAL_GAP as it waits, fully relaxed at MAX_WAIT so a
+        driveway on a saturated street cannot deadlock."""
+        f = min(1.0, veh.gap_wait / MAX_WAIT)
+        return CRITICAL_GAP + (MIN_CRITICAL_GAP - CRITICAL_GAP) * f
+
+    def _junction_gap(self, veh: Vehicle, d_stop: float) -> float | None:
+        """Virtual wall at an uncontrolled junction. Through and right-in
+        movements are unimpeded; a vehicle leaving a driveway must accept a gap."""
+        dw = self._exit_conns.get(veh.next_conn)
+        if dw is None:
+            return None
+        if self._gap_accepted(veh, dw):
+            return None
+        veh.gap_wait += self.dt
+        return max(0.0, d_stop - STOP_MARGIN)
+
+    def _gap_accepted(self, veh: Vehicle, dw) -> bool:
+        """Right-out gap acceptance evaluated at the stop line."""
+        target = self.net.connections[veh.next_conn].to_lane
+        occ = self._occ_list(ON_LANE, target)
+        if occ and (occ[0].s - occ[0].p.length) < veh.p.s0 + veh.p.length:
+            return False                        # no room downstream to merge into
+        crit = self.critical_gap(veh)
+        # Anything already inside the junction and about to reach the merge point.
+        for cid in self._feeders.get(target, ()):
+            occ_c = self._occ_list(ON_CONN, cid)
+            if occ_c:
+                cand = occ_c[-1]                # closest to the merge
+                d = self.net.connections[cid].length - cand.s
+                if (d - cand.p.s0) / max(cand.v, 1.0) <= crit:
+                    return False
+        cocc = self._occ_list(ON_LANE, dw.conflict_lane)
+        if cocc:
+            lag = cocc[-1]                      # nearest upstream vehicle
+            d = self.net.lanes[dw.conflict_lane].length - lag.s
+            if (d - lag.p.s0) / max(lag.v, 1.0) <= crit:
+                return False
+        return True
+
     def _leader_gap(self, veh: Vehicle) -> tuple[float, float]:
         """(gap, leader speed). Walks ahead across elements up to LOOKAHEAD."""
         occ = self._occ_list(veh.kind, veh.elem)
@@ -305,8 +400,7 @@ class Simulator:
         # Front of this element: walk the path.
         dist = self._elem_len(veh.kind, veh.elem) - veh.s
         if veh.kind == ON_LANE:
-            lane = self.net.lanes[veh.elem]
-            if self.net.nodes[self.net.links[lane.link].to_node].type == "boundary":
+            if self._lane_end_type[veh.elem] == "boundary":
                 return FREE_GAP, 0.0                    # free exit ahead
             wall = self._signal_gap(veh, dist)
             if wall is not None:
@@ -377,6 +471,21 @@ class Simulator:
         gap = (leader.s - leader.p.length) - veh.s + extra_gap
         return float(idm_accel(veh.v, leader.v, gap, veh.p, v0=v0))
 
+    def _safe_gap(self, veh: Vehicle, leader) -> float:
+        """Smallest gap a lane changer may accept in front of `leader`.
+
+        A bare `s0` check ignores closing speed: a mandatory change (which
+        carries a large MOBIL bias) could otherwise be taken at road speed into
+        a short gap ahead of a stopped queue, and no amount of subsequent
+        braking would avoid the overlap. Requiring room to shed the speed
+        difference at the driver's comfortable deceleration is a no-op whenever
+        the two vehicles are travelling at similar speeds, which is the case for
+        essentially every discretionary change."""
+        dv = veh.v - leader.v
+        if dv <= 0.0:
+            return veh.p.s0
+        return veh.p.s0 + dv * self.dt + dv * dv / (2.0 * veh.p.b)
+
     def _lane_changes(self, accels: dict[int, float]) -> None:
         for vid in sorted(self.vehicles):
             veh = self.vehicles[vid]
@@ -417,7 +526,8 @@ class Simulator:
                     if not serves and d_stop < 100.0:
                         continue
                 new_leader, new_follower = self._gaps_in_lane(target, veh.s)
-                if new_leader is not None and (new_leader.s - new_leader.p.length) - veh.s < veh.p.s0:
+                if new_leader is not None and \
+                        (new_leader.s - new_leader.p.length) - veh.s < self._safe_gap(veh, new_leader):
                     continue
                 if new_follower is not None and (veh.s - veh.p.length) - new_follower.s < new_follower.p.s0:
                     continue
@@ -463,6 +573,8 @@ class Simulator:
             veh.v = max(0.0, veh.v + a * dt)
             veh.s += veh.v * dt
             veh.lc_cooldown = max(0.0, veh.lc_cooldown - dt)
+            if self._has_parking:
+                veh.dist += veh.v * dt
             # Element transitions (a vehicle can cross at most one boundary per tick
             # at plausible speeds; loop anyway for safety).
             while True:
@@ -472,15 +584,18 @@ class Simulator:
                 overshoot = veh.s - length
                 if veh.kind == ON_LANE:
                     if veh.next_conn is None:
-                        link = self.net.links[self.net.lanes[veh.elem].link]
-                        if self.net.nodes[link.to_node].type == "boundary":
+                        if self._lane_end_type[veh.elem] == "boundary":
                             departed.append(vid)
                             break
                         veh.s = length          # wrong lane at the line: hold position
                         veh.v = 0.0
                         break
                     dest_kind, dest_elem = ON_CONN, veh.next_conn
-                    self.crossings[self.net.connections[veh.next_conn].intersection] += 1
+                    ix_id = self.net.connections[veh.next_conn].intersection
+                    if ix_id >= 0:
+                        self.crossings[ix_id] += 1
+                    elif veh.elem in self._exit_lanes:
+                        self.driveway_waits.append(veh.gap_wait)
                 else:
                     dest_kind, dest_elem = ON_LANE, self.net.connections[veh.elem].to_lane
                 # Strict no-overlap insertion into the destination element.
@@ -523,6 +638,26 @@ class Simulator:
                 if ap is not None and self.net.lanes[veh.elem].length - veh.s <= QUEUE_DIST:
                     veh.wait += dt
                     self.wait_by_approach[ap] += dt
+
+    def _park(self) -> None:
+        """A vehicle at rest at the end of a driveway is inside the garage: it
+        holds there for PARK_DWELL (so it is visibly parked, not teleported
+        away) and is then removed and counted."""
+        done: list[int] = []
+        for vid in sorted(self.vehicles):
+            veh = self.vehicles[vid]
+            if veh.kind != ON_LANE or veh.elem not in self._park_lanes:
+                continue
+            if veh.v >= QUEUE_SPEED or \
+                    self.net.lanes[veh.elem].length - veh.s > PARK_ARRIVE_DIST:
+                continue
+            veh.park_dwell += self.dt
+            if veh.park_dwell >= PARK_DWELL:
+                done.append(vid)
+        for vid in done:
+            veh = self.vehicles.pop(vid)
+            self._occ[(veh.kind, veh.elem)].remove(veh)
+            self.parked += 1
 
     # ---------------------------------------------------------------- observations
     def queues_by_approach(self) -> np.ndarray:

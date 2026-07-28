@@ -45,11 +45,13 @@ Required keys:
 - `dt` (float): seconds of sim time per tick.
 - `seed` (int | null), `policy` (string), `network_name` (string): provenance labels.
 - `network` (object): full renderable geometry —
-  - `nodes`: `[{id, x, y, type: "intersection"|"boundary"}]`
+  - `nodes`: `[{id, x, y, type: "intersection"|"boundary"|"parking"|"junction"}]` — `"parking"` is an off-street garage/lot where trips begin and end, `"junction"` an uncontrolled driveway junction on a street (neither is signalised; see `docs/PARKING_DESIGN.md`). Readers must treat unknown type strings as inert.
   - `links`: `[{id, from_node, to_node, lanes: [lane_id, ...]}]` — lanes listed left-to-right in travel direction.
   - `lanes`: `[{id, link, index, width, speed_limit, polyline: [[x,y], ...]}]` — polyline runs in travel direction; positions along a lane are arc-length along this polyline.
   - `connections`: `[{id, from_lane, to_lane, movement: "through"|"left"|"right", intersection}]`
   - `intersections`: `[{id, node, yellow, all_red, min_green, phases: [{name, connections: [conn_id, ...]}]}]`
+  - `junction_connections` (optional): `[{id, from_lane, to_lane, movement, junction}]` — movements at uncontrolled junctions. They have no owning intersection, so they are listed here rather than in `connections`; ids continue past the signalised ones. Absent when the network has no driveways.
+  - `driveways` (optional): `[{junction, parking, in_lane, out_lane, conflict_lane}]`. Absent when the network has no driveways.
 - `intersections_order`: `[intersection_id, ...]` — defines **K** and the array order of all per-intersection data in frames (signals, rewards).
 - `approaches`: `[{intersection, link, label}]` — defines **A** and the order of the per-frame queue array. One entry per incoming link per intersection.
 - `metrics`: `[name, ...]` — defines **M** and the order of the per-frame global metrics array. Producers should emit at least `["active_vehicles", "cumulative_delay", "throughput", "mean_speed"]`.

@@ -19,8 +19,11 @@ OUT = ROOT / "viz" / "public" / "fixtures"
 
 # (fixture name, network, demand, controller, seconds, seed)
 FIXTURES = [
-    # The headline demo: 25 intersections, mixed 1/2/3-lane streets.
-    ("city.traj", "city", "light", "actuated", 900.0, 3),
+    # The headline demo: 25 intersections, mixed 1/2/3-lane streets, and
+    # off-street trip ends — cars pull out of garages and park in them rather
+    # than appearing and vanishing at the map edge. `city` demand carries the
+    # parking block; `light` on the same network is the opt-in control.
+    ("city.traj", "city", "city", "actuated", 900.0, 3),
     # Perf reference: 4x4 grid driven into heavy congestion (~1500 vehicles).
     ("grid4x4_demo.traj", "grid4x4", "heavy", "max_pressure", 900.0, 7),
     # One intersection, close enough to watch individual car behaviour, and the

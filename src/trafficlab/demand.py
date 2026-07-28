@@ -36,16 +36,42 @@ class Demand:
                 raise ValueError(
                     f"per_entry rate for link {key!r} must be finite and >= 0, got {v}")
 
+        park = cfg.get("parking") or {}
+        self.park_share_from = float(park.get("share_from", 0.0))
+        self.park_share_to = float(park.get("share_to", 0.0))
+        self.park_trip_length = float(park.get("trip_length", 1200.0))
+        for name, value in (("share_from", self.park_share_from),
+                            ("share_to", self.park_share_to)):
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise ValueError(f"parking.{name} must be in [0, 1], got {value}")
+        if not math.isfinite(self.park_trip_length) or self.park_trip_length <= 0.0:
+            raise ValueError(
+                f"parking.trip_length must be finite and > 0, got {self.park_trip_length}")
+
         groups: dict[int, list[int]] = {}
         for lane_id in network.entry_lanes:
             groups.setdefault(network.lanes[lane_id].link, []).append(lane_id)
         self._entry_links: list[tuple[int, list[int]]] = [
             (link_id, sorted(lane_ids)) for link_id, lane_ids in sorted(groups.items())
         ]
+        garage_lanes = {network.driveways[j].out_lane for j in sorted(network.driveways)}
+        parking_links = [link_id for link_id, lane_ids in self._entry_links
+                         if garage_lanes.intersection(lane_ids)]
         self._rates: dict[int, float] = {}
         for link_id, _ in self._entry_links:
             override = per_entry.get(str(link_id), per_entry.get(link_id))
             self._rates[link_id] = self.base_rate if override is None else float(override)
+        # `share_from` REDISTRIBUTES the boundary demand: the total arrival rate
+        # is unchanged, a share of it is injected from garages instead of stubs.
+        if parking_links:
+            park_set = set(parking_links)
+            boundary = [l for l, _ in self._entry_links if l not in park_set]
+            total = sum(self._rates[l] for l in boundary)
+            for link_id in boundary:
+                self._rates[link_id] *= 1.0 - self.park_share_from
+            per_garage = total * self.park_share_from / len(parking_links)
+            for link_id in parking_links:
+                self._rates[link_id] = per_garage
 
         profile = cfg.get("profile")
         if profile:
@@ -76,6 +102,16 @@ class Demand:
             for _ in range(int(self.rng.poisson(lam))):
                 out.append(lane_ids[int(self.rng.integers(len(lane_ids)))])
         return out
+
+    def park_after(self) -> float:
+        """Metres to travel before the vehicle looks for a garage; `inf` when
+        it has no parking intent. Draws nothing at all when parking is off, so
+        a config without a "parking" block leaves the rng stream untouched."""
+        if self.park_share_to <= 0.0:
+            return math.inf
+        if float(self.rng.random()) >= self.park_share_to:
+            return math.inf
+        return float(self.rng.exponential(self.park_trip_length))
 
     def _available(self, ix: int, from_link: int) -> tuple[str, ...]:
         """Movements with at least one connection at (ix, from_link), in MOVEMENTS order."""

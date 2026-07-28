@@ -693,5 +693,12 @@
       "two_way": true,
       "speed_limit": 13.9
     }
-  ]
+  ],
+  "parking": {
+    "spacing": 110.0,
+    "driveway_length": 14.0,
+    "speed_limit": 5.6,
+    "min_segment": 45.0,
+    "streets_only": true
+  }
 }

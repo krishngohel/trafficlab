@@ -103,8 +103,9 @@ def test_mixed_network_meta_carries_per_link_geometry():
 
     lanes_per_link = sorted({len(l["lanes"]) for l in meta_net["links"]})
     assert lanes_per_link == [1, 2, 3]
-    # Per-lane speed limits survive (avenue / street / local).
-    assert len({l["speed_limit"] for l in meta_net["lanes"]}) == 3
+    # Per-lane speed limits survive (avenue / street / local, plus driveways).
+    assert {16.7, 13.9, 11.1} <= {l["speed_limit"] for l in meta_net["lanes"]}
+    assert len({l["speed_limit"] for l in meta_net["lanes"]}) == 4
     # Each lane carries its own polyline, so geometry is never inferred.
     assert all(len(l["polyline"]) >= 2 for l in meta_net["lanes"])
 

@@ -44,6 +44,7 @@ def make_network(reverse_dicts: bool = False):
     return SimpleNamespace(
         lanes=lanes, links=links, connections=connections,
         lane_connections=lane_connections, entry_lanes=[0, 1, 2, 3],
+        driveways={}, parking_nodes=[],
     )
 
 

@@ -1,0 +1,9 @@
+{
+  "base_rate": 400,
+  "turning": {"left": 0.2, "through": 0.65, "right": 0.15},
+  "parking": {
+    "share_from": 0.5,
+    "share_to": 0.5,
+    "trip_length": 1200.0
+  }
+}

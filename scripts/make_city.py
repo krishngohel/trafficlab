@@ -14,6 +14,7 @@ stubs so traffic has somewhere to enter and leave.
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,16 @@ def classify(index: int, count: int, avenues: set[int], locals_: set[int]) -> st
     return "street"
 
 
-def build(rows: int, cols: int, block: float, arm: float) -> dict:
+PARKING = {
+    "spacing": 110.0,
+    "driveway_length": 14.0,
+    "speed_limit": 5.6,
+    "min_segment": 45.0,
+    "streets_only": True,
+}
+
+
+def build(rows: int, cols: int, block: float, arm: float, parking: bool = True) -> dict:
     # Avenues run through the middle of the grid; one local street per axis on
     # the far edge, which is what puts a single-lane approach (and therefore
     # split phasing) into the sample.
@@ -92,7 +102,12 @@ def build(rows: int, cols: int, block: float, arm: float) -> dict:
         stub(i, 0, 0.0, -1.0, cls)
         stub(i, rows - 1, 0.0, 1.0, cls)
 
-    return {"type": "explicit", "nodes": nodes, "edges": edges}
+    cfg = {"type": "explicit", "nodes": nodes, "edges": edges}
+    if parking:
+        # Off-street trip ends: garages/lots hang off every street and local
+        # (avenues stay clear, see docs/PARKING_DESIGN.md).
+        cfg["parking"] = dict(PARKING)
+    return cfg
 
 
 def main() -> None:
@@ -102,9 +117,13 @@ def main() -> None:
     ap.add_argument("--block", type=float, default=220.0)
     ap.add_argument("--arm", type=float, default=170.0)
     ap.add_argument("--out", default="configs/networks/city.json")
+    ap.add_argument("--parking", dest="parking", action="store_true", default=True,
+                    help="emit the off-street parking block (default)")
+    ap.add_argument("--no-parking", dest="parking", action="store_false",
+                    help="plain network, no driveways or garages")
     args = ap.parse_args()
 
-    cfg = build(args.rows, args.cols, args.block, args.arm)
+    cfg = build(args.rows, args.cols, args.block, args.arm, parking=args.parking)
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(cfg, indent=2) + "\n")
@@ -116,6 +135,12 @@ def main() -> None:
     print(f"wrote {out}")
     print(f"  {signalised} signalised intersections, {len(cfg['edges'])} edges")
     print(f"  edges by lane count: {dict(sorted(lanes.items()))}")
+    if cfg.get("parking"):
+        sys.path.insert(0, str(ROOT / "src"))
+        from trafficlab.network import Network
+        net = Network.from_config(cfg)
+        print(f"  parking: {len(net.parking_nodes)} garages, "
+              f"{len(net.driveways)} driveways, {len(net.entry_lanes)} entry lanes")
 
 
 if __name__ == "__main__":

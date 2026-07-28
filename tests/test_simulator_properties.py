@@ -42,8 +42,10 @@ def run_with_invariants(sim, ticks):
         # No overlaps, ever.
         problems = sim.check_no_overlap()
         assert problems == [], f"tick {tk}: {problems[:3]}"
-        # Flow conservation and non-negative speeds.
-        assert sim.spawned == sim.departed + len(sim.vehicles), f"tick {tk}: conservation"
+        # Flow conservation and non-negative speeds. A vehicle leaves the
+        # network either through a boundary or into a garage.
+        assert sim.spawned == sim.departed + sim.parked + len(sim.vehicles), \
+            f"tick {tk}: conservation"
         for vid, veh in sim.vehicles.items():
             assert veh.v >= 0.0, f"tick {tk}: vehicle {vid} negative speed {veh.v}"
             if vid in before:
@@ -65,6 +67,25 @@ def test_invariants(network, demand, seed):
 
 def test_invariants_grid4x4_short():
     run_with_invariants(make_sim("grid4x4", "heavy", 5), ticks=160)
+
+
+def test_no_overlap_at_long_horizon():
+    """Regression: the MOBIL gap check used to be position-only, so a mandatory
+    lane change at road speed into a short gap ahead of a stopped queue was
+    accepted and no braking could avoid the overlap. It first fires on
+    arterial6/rush seed 0 around tick 1193 — well past the 360 ticks the
+    invariant tests above run, which is exactly why it survived so long."""
+    sim = make_sim("arterial6", "rush", seed=0)
+    controllers = default_controllers(sim)
+    worst = []
+    for tk in range(1400):
+        for c in controllers:
+            c.step()
+        sim.step()
+        problems = sim.check_no_overlap()
+        if problems:
+            worst.append((tk, problems[0]))
+    assert worst == [], f"{len(worst)} overlapping ticks, first: {worst[0]}"
 
 
 def test_vehicles_flow_through():

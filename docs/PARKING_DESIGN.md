@@ -107,6 +107,17 @@ A vehicle that has waited longer than `MAX_WAIT` (default 60 s) relaxes its
 critical gap linearly toward 3.0 s, so a driveway on a saturated street cannot
 deadlock forever.
 
+> **Correction (implementation).** "Relaxes linearly" is read as: the gap
+> interpolates from `CRITICAL_GAP` at zero wait to 3.0 s at `MAX_WAIT`, and
+> stays at 3.0 s thereafter. Starting the ramp only *after* 60 s would push
+> full relaxation past the 120 s the anti-deadlock test in section 5 allows.
+>
+> Two further conditions gate entry beyond the lag check, because the lag check
+> alone lets a vehicle merge into an occupied merge point: there must be
+> `s0 + length` of free space on the target lane, and anything already inside
+> the junction on a connection feeding that lane must itself be more than the
+> (relaxed) critical gap away from the merge. Both relax with waiting.
+
 ### Arriving at a parking node
 
 Vehicles are not routed origin-to-destination (the sim samples turning
@@ -149,6 +160,16 @@ Absent ⇒ no parking trips, exactly today's behaviour. Arrival draws stay
 Poisson and the per-tick iteration order stays sorted-by-id so determinism is
 preserved. Parking nodes are drawn from a sorted list with the same `rng`.
 
+> **Correction (implementation).** `share_from` *redistributes* demand rather
+> than adding to it: boundary link rates are scaled by `1 - share_from` and the
+> freed rate is spread evenly over the garages, so the total arrival rate is
+> unchanged and `base_rate` keeps meaning what it meant. Adding garage arrivals
+> on top would have silently doubled city demand.
+>
+> The demo demand block lives in the new `configs/demand/city.json`;
+> `light`/`rush`/`heavy` are untouched and therefore leave parking dormant even
+> on the city network.
+
 ## 4. Trajectory format
 
 Purely additive and **no version bump**: `meta.network.nodes[].type` may now
@@ -157,6 +178,16 @@ existing `links`/`lanes` arrays like any other. `validate_bytes` never
 constrained the node-type string, so old readers keep working. Update the type
 list in `docs/TRAJECTORY_FORMAT.md`. The visualizer places garages at parking
 nodes in a later pass.
+
+> **Correction (implementation).** Junction connections cannot go in
+> `meta.network.connections`: `trajectory._check_meta` requires every entry
+> there to name a real intersection, and rejects the meta otherwise — so
+> `TrajectoryWriter` would refuse to open a parking-enabled recording. They are
+> emitted under two new optional keys instead, `network.junction_connections`
+> and `network.driveways`, which are omitted entirely when the network has no
+> driveways (that is what keeps the four shipped configs byte-identical).
+> Signalised connection ids still run dense `0..K-1`; junction connections are
+> generated afterwards, so `connections[i].id == i` still holds.
 
 ## 5. Tests (all required)
 

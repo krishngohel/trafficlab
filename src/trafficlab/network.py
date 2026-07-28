@@ -13,6 +13,9 @@ assignment order:
   order (N, E, S, W first); per outgoing link ascending id; from-lane index
   ascending. Through goes from lane i to lane min(i, L_out-1); left targets
   lane 0; right targets lane L_out-1.
+- uncontrolled junction connections (driveways, see docs/PARKING_DESIGN.md) are
+  generated LAST, after every signalised connection, so signalised connection
+  ids stay dense 0..K-1 exactly as before the parking feature existed.
 """
 from __future__ import annotations
 
@@ -31,6 +34,18 @@ CONFLICT_SAMPLES = 24           # polyline resampling for phase-conflict checkin
 MERGE_EXCLUSION = 4.0           # m around polyline end points where crossings are legal merges
 COMPASS_LABELS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 PHASE_ORDER = ("NS", "NS-L", "EW", "EW-L")
+
+# Off-street trip ends (docs/PARKING_DESIGN.md). Opt-in: a config without a
+# "parking" block builds exactly as it did before this feature existed.
+NO_INTERSECTION = -1            # Connection.intersection for uncontrolled junctions
+AVENUE_LANES = 3                # "streets_only" skips links with >= this many lanes
+PARKING_DEFAULTS = {
+    "spacing": 110.0,           # metres of frontage per driveway
+    "driveway_length": 14.0,    # length of the driveway LANE (kerb -> garage)
+    "speed_limit": 5.6,
+    "min_segment": 45.0,        # never split a segment shorter than this
+    "streets_only": True,
+}
 
 
 def _arclengths(polyline: np.ndarray) -> np.ndarray:
@@ -53,7 +68,7 @@ class Node:
     id: int
     x: float
     y: float
-    type: str  # "intersection" | "boundary"
+    type: str  # "intersection" | "boundary" | "parking" | "junction"
 
 
 @dataclass
@@ -116,6 +131,16 @@ class Intersection:
     yellow: float
     all_red: float
     min_green: float
+
+
+@dataclass(frozen=True)
+class Driveway:
+    """Right-in / right-out off-street access at an uncontrolled junction."""
+    junction: int           # the uncontrolled node on the street
+    parking: int            # the parking node it serves
+    in_lane: int            # driveway lane carrying street -> parking (entering)
+    out_lane: int           # driveway lane carrying parking -> street (exiting)
+    conflict_lane: int      # street lane an exiting vehicle must yield to
 
 
 def _turn_control_point(from_poly: np.ndarray, to_poly: np.ndarray) -> np.ndarray:
@@ -212,18 +237,24 @@ class Network:
 
     def __init__(self, nodes: dict[int, Node], links: dict[int, Link],
                  lanes: dict[int, Lane], connections: dict[int, Connection],
-                 intersections: dict[int, Intersection]) -> None:
+                 intersections: dict[int, Intersection],
+                 driveways: dict[int, Driveway] | None = None) -> None:
         self.nodes = nodes
         self.links = links
         self.lanes = lanes
         self.connections = connections
         self.intersections = intersections
+        self.driveways: dict[int, Driveway] = dict(driveways or {})
+        self.parking_nodes: list[int] = sorted(
+            nid for nid, n in nodes.items() if n.type == "parking")
         self.lane_connections: dict[int, list[int]] = {lid: [] for lid in sorted(lanes)}
         for cid in sorted(connections):
             self.lane_connections[connections[cid].from_lane].append(cid)
+        # Lanes traffic may be injected on: boundary stubs, plus the lane
+        # leaving each parking node.
         self.entry_lanes: list[int] = sorted(
             lid for lid, lane in lanes.items()
-            if nodes[links[lane.link].from_node].type == "boundary")
+            if nodes[links[lane.link].from_node].type in ("boundary", "parking"))
 
     def incoming_links(self, ix: int) -> list[int]:
         """Incoming link ids sorted by compass angle of approach: N, E, S, W first."""
@@ -243,8 +274,15 @@ class Network:
         return out
 
     def to_meta_network(self) -> dict:
-        """Exactly the TRAJECTORY_FORMAT.md meta["network"] shape (JSON-serializable)."""
-        return {
+        """Exactly the TRAJECTORY_FORMAT.md meta["network"] shape (JSON-serializable).
+
+        Uncontrolled-junction connections have no owning intersection, and
+        `trajectory._check_meta` requires every entry of `connections` to name a
+        real one, so they are emitted under the additive optional keys
+        `junction_connections` / `driveways` instead. Those keys are omitted
+        entirely when the network has no driveways, which is what keeps the
+        pre-parking configs byte-identical."""
+        meta = {
             "nodes": [{"id": n.id, "x": float(n.x), "y": float(n.y), "type": n.type}
                       for n in (self.nodes[k] for k in sorted(self.nodes))],
             "links": [{"id": l.id, "from_node": l.from_node, "to_node": l.to_node,
@@ -256,13 +294,26 @@ class Network:
                       for l in (self.lanes[k] for k in sorted(self.lanes))],
             "connections": [{"id": c.id, "from_lane": c.from_lane, "to_lane": c.to_lane,
                              "movement": c.movement, "intersection": c.intersection}
-                            for c in (self.connections[k] for k in sorted(self.connections))],
+                            for c in (self.connections[k] for k in sorted(self.connections))
+                            if c.intersection != NO_INTERSECTION],
             "intersections": [{"id": ix.id, "node": ix.node, "yellow": float(ix.yellow),
                                "all_red": float(ix.all_red), "min_green": float(ix.min_green),
                                "phases": [{"name": p.name, "connections": list(p.connections)}
                                           for p in ix.phases]}
                               for ix in (self.intersections[k] for k in sorted(self.intersections))],
         }
+        if self.driveways:
+            meta["junction_connections"] = [
+                {"id": c.id, "from_lane": c.from_lane, "to_lane": c.to_lane,
+                 "movement": c.movement,
+                 "junction": self.links[self.lanes[c.from_lane].link].to_node}
+                for c in (self.connections[k] for k in sorted(self.connections))
+                if c.intersection == NO_INTERSECTION]
+            meta["driveways"] = [
+                {"junction": d.junction, "parking": d.parking, "in_lane": d.in_lane,
+                 "out_lane": d.out_lane, "conflict_lane": d.conflict_lane}
+                for d in (self.driveways[k] for k in sorted(self.driveways))]
+        return meta
 
     @classmethod
     def from_config(cls, cfg: dict) -> "Network":
@@ -275,10 +326,95 @@ class Network:
             nodes, edges = _explicit(cfg)
         else:
             raise ValueError(f"unknown network type {kind!r}")
+        specs: list[dict] = []
+        if cfg.get("parking"):
+            nodes, edges, specs = _add_parking(nodes, edges, cfg["parking"])
         return cls(*_build(nodes, edges,
                            yellow=float(cfg.get("yellow", DEFAULT_YELLOW)),
                            all_red=float(cfg.get("all_red", DEFAULT_ALL_RED)),
-                           min_green=float(cfg.get("min_green", DEFAULT_MIN_GREEN))))
+                           min_green=float(cfg.get("min_green", DEFAULT_MIN_GREEN)),
+                           driveway_specs=specs))
+
+
+def _driveway_count(span: float, lanes: int, spacing: float, min_segment: float,
+                    streets_only: bool) -> int:
+    """How many driveways fit on one edge: `spacing` metres of frontage each,
+    never leaving a street segment shorter than `min_segment`."""
+    if streets_only and lanes >= AVENUE_LANES:
+        return 0
+    by_frontage = int(span // spacing)
+    by_segment = max(0, int(span // min_segment) - 1)
+    return max(0, min(by_frontage, by_segment))
+
+
+def _add_parking(nodes_list: list[Node], edges: list[dict],
+                 pcfg: dict) -> tuple[list[Node], list[dict], list[dict]]:
+    """Split street edges at driveways and attach parking nodes.
+
+    Runs BEFORE any lane geometry exists, so everything downstream (ids, lane
+    ribbons, connections, the phase-conflict check) sees an ordinary network.
+    Returns (nodes, edges, driveway specs keyed by node id)."""
+    cfgd = {**PARKING_DEFAULTS, **pcfg}
+    spacing = float(cfgd["spacing"])
+    dlen = float(cfgd["driveway_length"])
+    dspeed = float(cfgd["speed_limit"])
+    min_segment = float(cfgd["min_segment"])
+    streets_only = bool(cfgd["streets_only"])
+    for name, value in (("spacing", spacing), ("driveway_length", dlen),
+                        ("speed_limit", dspeed), ("min_segment", min_segment)):
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"parking.{name} must be finite and > 0, got {value}")
+
+    by_id = {n.id: n for n in nodes_list}
+    next_id = max(by_id) + 1
+    out_nodes = list(nodes_list)
+    out_edges: list[dict] = []
+    specs: list[dict] = []
+    for e in edges:
+        na, nb = by_id[e["from"]], by_id[e["to"]]
+        span = math.hypot(nb.x - na.x, nb.y - na.y)
+        nl = int(e["lanes"])
+        n = _driveway_count(span, nl, spacing, min_segment, streets_only)
+        if n <= 0:
+            out_edges.append(dict(e))
+            continue
+        ux, uy = (nb.x - na.x) / span, (nb.y - na.y) / span
+        rx, ry = uy, -ux                                # perpendicular-right of forward
+        # The junction gets the same box radius rule as an intersection, so the
+        # driveway lane starts at the kerb and never overlaps the carriageway.
+        reach = BOX_BASE + BOX_PER_LANE * nl + dlen
+        chain = [na.id]
+        new_specs: list[dict] = []
+        drive_edges: list[dict] = []
+        for k in range(n):
+            f = (k + 1) / (n + 1)
+            jx, jy = na.x + ux * f * span, na.y + uy * f * span
+            jid = next_id
+            out_nodes.append(Node(jid, jx, jy, "junction"))
+            next_id += 1
+            # Alternate kerbs so both directions of a two-way street get
+            # right-in/right-out access.
+            side = 1.0 if (k % 2 == 0 or not e["two_way"]) else -1.0
+            pid = next_id
+            out_nodes.append(Node(pid, jx + rx * side * reach, jy + ry * side * reach,
+                                  "parking"))
+            next_id += 1
+            drive_edges.append({"from": jid, "to": pid, "lanes": 1, "two_way": True,
+                                "speed_limit": dspeed})
+            new_specs.append({"junction": jid, "parking": pid, "side": side})
+            chain.append(jid)
+        chain.append(nb.id)
+        for a, b in zip(chain, chain[1:]):
+            out_edges.append({**e, "from": a, "to": b})
+        out_edges.extend(drive_edges)
+        for k, spec in enumerate(new_specs):
+            idx = k + 1                                 # position of the junction in chain
+            if spec["side"] > 0.0:                      # served direction = forward
+                spec["in_from"], spec["out_to"] = chain[idx - 1], chain[idx + 1]
+            else:                                       # served direction = reverse
+                spec["in_from"], spec["out_to"] = chain[idx + 1], chain[idx - 1]
+            specs.append(spec)
+    return out_nodes, out_edges, specs
 
 
 def _grid(cfg: dict) -> tuple[list[Node], list[dict]]:
@@ -348,8 +484,9 @@ def _explicit(cfg: dict) -> tuple[list[Node], list[dict]]:
 
 
 def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: float,
-           min_green: float) -> tuple[dict[int, Node], dict[int, Link], dict[int, Lane],
-                                      dict[int, Connection], dict[int, Intersection]]:
+           min_green: float, driveway_specs: list[dict] | None = None,
+           ) -> tuple[dict[int, Node], dict[int, Link], dict[int, Lane],
+                      dict[int, Connection], dict[int, Intersection], dict[int, Driveway]]:
     nodes = {n.id: n for n in nodes_list}
     specs: list[tuple[int, int, int, float]] = []       # from, to, n_lanes, speed_limit
     for e in edges:
@@ -358,10 +495,12 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
             specs.append((e["to"], e["from"], e["lanes"], e["speed_limit"]))
 
     # Intersection box radius: 6.0 + 3.5 * max lanes over incident links.
+    # Uncontrolled junctions use the same rule so a driveway lane starts at the
+    # kerb rather than inside the carriageway.
     box = {nid: 0.0 for nid in nodes}
     for a, b, nl, _sl in specs:
         for nid in (a, b):
-            if nodes[nid].type == "intersection":
+            if nodes[nid].type in ("intersection", "junction"):
                 box[nid] = max(box[nid], BOX_BASE + BOX_PER_LANE * nl)
 
     links: dict[int, Link] = {}
@@ -470,4 +609,54 @@ def _build(nodes_list: list[Node], edges: list[dict], yellow: float, all_red: fl
                 f"(no incoming links or no legal movements)")
         intersections[ix_id] = Intersection(ix_id, nid, phases, yellow, all_red, min_green)
     _check_phase_conflicts(intersections, connections)
-    return nodes, links, lanes, connections, intersections
+    driveways = _build_junctions(nodes, links, lanes, connections, driveway_specs or [])
+    return nodes, links, lanes, connections, intersections, driveways
+
+
+def _connect(connections: dict[int, Connection], lanes: dict[int, Lane],
+             from_lane: int, to_lane: int, movement: str, ix: int) -> int:
+    """Append one connection (straight for through, Bezier for a turn)."""
+    fl, tl = lanes[from_lane], lanes[to_lane]
+    p0, p2 = fl.polyline[-1], tl.polyline[0]
+    if movement == "through":
+        poly = np.array([p0, p2], dtype=np.float64)
+    else:
+        t = np.linspace(0.0, 1.0, BEZIER_SAMPLES)[:, None]
+        p1 = _turn_control_point(fl.polyline, tl.polyline)
+        poly = (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t ** 2 * p2
+    cid = (max(connections) + 1) if connections else 0
+    connections[cid] = Connection(cid, from_lane, to_lane, movement, ix, poly)
+    return cid
+
+
+def _build_junctions(nodes: dict[int, Node], links: dict[int, Link],
+                     lanes: dict[int, Lane], connections: dict[int, Connection],
+                     driveway_specs: list[dict]) -> dict[int, Driveway]:
+    """Connections at uncontrolled junctions: street through movements both
+    ways plus the right-in / right-out driveway pair. No lefts, no U-turns,
+    no phases and no signal unit — junctions never enter `intersections`."""
+    if not driveway_specs:
+        return {}
+    pair = {(l.from_node, l.to_node): l.id for l in links.values()}
+    driveways: dict[int, Driveway] = {}
+    for spec in sorted(driveway_specs, key=lambda d: d["junction"]):
+        j, p = spec["junction"], spec["parking"]
+        street = sorted({a for (a, b) in pair if b == j and a != p} |
+                        {b for (a, b) in pair if a == j and b != p})
+        if len(street) != 2:
+            raise ValueError(f"junction node {j}: expected 2 street neighbours, got {street}")
+        for a, b in ((street[0], street[1]), (street[1], street[0])):
+            li, lo = pair.get((a, j)), pair.get((j, b))
+            if li is None or lo is None:
+                continue
+            lin, lout = links[li].lanes, links[lo].lanes
+            for i in range(min(len(lin), len(lout))):
+                _connect(connections, lanes, lin[i], lout[i], "through", NO_INTERSECTION)
+        li, lo = pair[(spec["in_from"], j)], pair[(j, spec["out_to"])]
+        dw_in, dw_out = pair[(j, p)], pair[(p, j)]
+        in_lane, out_lane = links[dw_in].lanes[0], links[dw_out].lanes[0]
+        conflict_lane = links[li].lanes[-1]             # rightmost inbound street lane
+        _connect(connections, lanes, conflict_lane, in_lane, "right", NO_INTERSECTION)
+        _connect(connections, lanes, out_lane, links[lo].lanes[-1], "right", NO_INTERSECTION)
+        driveways[j] = Driveway(j, p, in_lane, out_lane, conflict_lane)
+    return driveways

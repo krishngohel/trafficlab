@@ -1,6 +1,7 @@
 """Tests for trafficlab.network: geometry, topology, phases, meta export."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -374,3 +375,21 @@ def test_determinism(name):
     assert a.approaches() == b.approaches()
     assert a.entry_lanes == b.entry_lanes
     assert a.lane_connections == b.lane_connections
+
+
+# --------------------------------------------------------------------- golden
+# The four shipped configs must keep building byte-identically forever: every
+# committed evaluation result in results/ is keyed to this geometry. The
+# fixtures were captured before off-street parking landed (docs/PARKING_DESIGN.md).
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.mark.parametrize("name", CONFIG_NAMES)
+def test_shipped_networks_match_the_pre_parking_golden(name):
+    golden = (FIXTURES / f"golden_network_{name}.json").read_text()
+    actual = json.dumps(build(name).to_meta_network(), sort_keys=True,
+                        separators=(",", ":"))
+    assert actual == golden, (
+        f"{name}.json no longer builds byte-identically; results/ is invalidated")
+    expected_hash = json.loads((FIXTURES / "golden_network_hashes.json").read_text())[name]
+    assert hashlib.sha256(actual.encode()).hexdigest() == expected_hash
