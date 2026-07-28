@@ -19,3 +19,9 @@ results/trajectories/
 
 .DS_Store
 Thumbs.db
+
+# Render intermediates: the published GIFs are committed, their sources are not
+*.webm
+results/gifs/*_raw.*
+results/gifs/palette.png
+results/gifs/post_stop_debug.png
