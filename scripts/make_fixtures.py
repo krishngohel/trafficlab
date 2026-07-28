@@ -23,9 +23,11 @@ FIXTURES = [
     ("city.traj", "city", "light", "actuated", 900.0, 3),
     # Perf reference: 4x4 grid driven into heavy congestion (~1500 vehicles).
     ("grid4x4_demo.traj", "grid4x4", "heavy", "max_pressure", 900.0, 7),
-    # Same seed, two policies — split-screen comparison.
-    ("pair_fixed.traj", "single", "rush", "fixed", 900.0, 0),
-    ("pair_actuated.traj", "single", "rush", "actuated", 900.0, 0),
+    # One intersection, close enough to watch individual car behaviour, and the
+    # same seed under two policies so split-screen comparison has something to
+    # compare.
+    ("single_actuated.traj", "single", "rush", "actuated", 900.0, 0),
+    ("single_fixed.traj", "single", "rush", "fixed", 900.0, 0),
 ]
 
 
@@ -67,9 +69,13 @@ def main() -> None:
             raise SystemExit(f"{name}: not every intersection is actively controlled")
         print("  " + check.stdout.strip().splitlines()[-1])
 
+    # NOT a demo: a hand-built, format-valid file with no simulator behind it
+    # (24 recycled vehicles, through-movements only, zero acceleration). It
+    # exists so the TypeScript parser/scan tests have a fixture to run against,
+    # and it is deliberately absent from the viewer's demo buttons.
     from trafficlab.synthetic import write_synthetic
     write_synthetic(OUT / "synthetic.traj", num_frames=480, seed=42)
-    print("synthetic.traj: written")
+    print("synthetic.traj: written (parser test fixture, not a demo)")
 
     total = sum(p.stat().st_size for p in OUT.glob("*.traj"))
     print(f"\n{len(list(OUT.glob('*.traj')))} fixtures, {total / 1e6:.0f} MB in {OUT}")

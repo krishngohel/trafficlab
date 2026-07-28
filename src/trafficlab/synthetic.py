@@ -1,8 +1,17 @@
-"""Synthetic trajectory generation: a fake but format-valid single intersection.
+"""A fake but format-valid single intersection — a TEST FIXTURE, not a demo.
 
-Used by the format tests and as a development fixture for the visualizer before
-the real simulator exists. Vehicles stream through a 4-way intersection on
-straight lanes; signals cycle through phases with yellow/all-red transitions.
+This exists so the format layer can be exercised with no simulator behind it:
+`tests/test_trajectory.py` and the TypeScript parser tests
+(`viz/src/lib/{traj,scan}.test.ts`) need a real .traj to parse, and building one
+by hand keeps those tests independent of `simulator.py` entirely.
+
+It is deliberately not a simulation and should never be offered as a demo — the
+same 24 vehicles recycle forever (none spawn or depart), the only movements are
+the four through-connections (no turns exist), acceleration is always zero, and
+speeds come from a closed-form easing rather than IDM. Rendered in the scene it
+looks exactly like what it is: eight short stubs with cars sliding along them.
+For anything user-facing use `scripts/make_fixtures.py`, which records real
+simulations.
 """
 from __future__ import annotations
 

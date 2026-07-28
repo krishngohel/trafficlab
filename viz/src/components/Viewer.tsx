@@ -319,11 +319,19 @@ export default function Viewer() {
             >
               Load city demo
             </button>
-            <button className={styles.button} onClick={() => loadDemo("grid4x4_demo.traj")}>
+            <button
+              className={styles.button}
+              onClick={() => loadDemo("grid4x4_demo.traj")}
+              title="4×4 grid under heavy demand — ~1500 vehicles, the performance reference"
+            >
               4×4 grid
             </button>
-            <button className={styles.button} onClick={() => loadDemo("synthetic.traj")}>
-              Synthetic
+            <button
+              className={styles.button}
+              onClick={() => loadDemo("single_actuated.traj")}
+              title="One intersection under actuated control — close enough to watch individual cars"
+            >
+              Single intersection
             </button>
           </div>
         </div>
