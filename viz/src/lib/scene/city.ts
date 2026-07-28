@@ -159,7 +159,11 @@ const TUNING = {
   walkWidth: 4,
   /** Gap from the block interior edge to the building facades (m). */
   setback: 2.2,
-  /** How far back from a crossing a block frontage starts (m). */
+  /**
+   * How far back from a crossing a block frontage starts (m). This also feeds
+   * `rowInset`, which is what stops the four frontage rows knotting together at
+   * the block corners — shrinking it to win frontage costs overlapping models.
+   */
   cornerInset: 21,
   /** Radius of a filler crossing's paved disc (m). */
   nodeRadius: 12.5,
@@ -169,17 +173,25 @@ const TUNING = {
    * which is what lets the model city reach out most of a kilometre before the
    * merged boxes have to take over.
    */
-  modelBudget: 1700,
-  towerBudget: 70,
-  midriseBudget: 260,
+  modelBudget: 2400,
+  towerBudget: 110,
+  midriseBudget: 420,
   maxStreetTrees: 300,
   maxParkTrees: 340,
   /** How often a downtown plot gets a tower rather than a mid-rise. */
-  towerChance: 0.22,
+  towerChance: 0.26,
   /** Blocks kept as parkland. */
-  parkChance: 0.11,
+  parkChance: 0.06,
   /** Built blocks that keep a green interior (suburban, buildings on the rim). */
-  greenInteriorChance: 0.16,
+  greenInteriorChance: 0.09,
+  /**
+   * Block interiors behind the street wall. A block built only around its rim
+   * reads as a fence around a yard from above, so the middle gets a lower rank
+   * of lock-ups and sheds. Denser pitch and a higher take rate fill the
+   * courtyards without competing with the frontage for height.
+   */
+  shedPitch: 29,
+  shedChance: 0.68,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -604,6 +616,38 @@ export function planCity(meta: TrajMeta): CityPlan {
   const buildings: BuildingSpot[] = [];
   const lots: CityRect[] = [];
   const parkBlocks: Block[] = [];
+  /**
+   * Spatial hash of every placed model footprint, so a candidate can be tested
+   * against its real neighbours rather than against an analytically-derived
+   * empty rectangle. Blocks are NOT guaranteed disjoint out in the filler grid
+   * (two grid lines a couple of metres apart produce a sliver and two blocks
+   * that nearly coincide), so a per-block check is not sufficient.
+   */
+  const OCC_CELL = 48;
+  const occ = new Map<string, BuildingSpot[]>();
+  const occKey = (x: number, y: number) =>
+    `${Math.floor(x / OCC_CELL)}:${Math.floor(y / OCC_CELL)}`;
+  const remember = (spot: BuildingSpot) => {
+    const key = occKey(spot.x, spot.y);
+    const bucket = occ.get(key);
+    if (bucket) bucket.push(spot);
+    else occ.set(key, [spot]);
+  };
+  /** True when a footprint of side `w` at (x, y) clears everything placed. */
+  const freeAt = (x: number, y: number, w: number): boolean => {
+    const cx = Math.floor(x / OCC_CELL);
+    const cy = Math.floor(y / OCC_CELL);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const o of occ.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          const ox = w / 2 + o.width / 2 - Math.abs(x - o.x);
+          const oy = w / 2 + o.width / 2 - Math.abs(y - o.y);
+          if (Math.min(ox, oy) > -1) return false;   // 1 m of daylight required
+        }
+      }
+    }
+    return true;
+  };
   let modelCount = 0;
   let towerCount = 0;
   let midriseCount = 0;
@@ -615,8 +659,8 @@ export function planCity(meta: TrajMeta): CityPlan {
 
   for (const block of blocks) {
     // The edge of the city thins out rather than stopping at a wall.
-    const fade = clamp((block.dist - half * 0.68) / (half * 0.32), 0, 1);
-    if (rand() > 1 - fade * 0.6) continue;
+    const fade = clamp((block.dist - half * 0.72) / (half * 0.28), 0, 1);
+    if (rand() > 1 - fade * 0.52) continue;
     // Downtown land is too valuable for lawns; the further out a block is, the
     // more likely it is a park or a plot with a green yard behind the frontage.
     const outward = clamp(block.dist / half, 0, 1);
@@ -640,7 +684,7 @@ export function planCity(meta: TrajMeta): CityPlan {
     // Frontage step grows with distance: near the camera a block is a dozen
     // narrow shopfronts, on the horizon it is three fat slabs.
     const far = clamp(block.dist / half, 0, 1);
-    const step = 23 + far * 18;
+    const step = 19 + far * 14;
     const heightFalloff = 1 - far * 0.45;
 
     // Past the model budget a block stops being rows-around-a-courtyard and
@@ -651,7 +695,7 @@ export function planCity(meta: TrajMeta): CityPlan {
       const pitch = 30;
       // Blocks also empty out as they approach the edge, so the city thins in
       // two ways at once — fewer blocks built, and less on each of them.
-      const density = (0.62 + rand() * 0.3) * (1 - fade * 0.55);
+      const density = (0.76 + rand() * 0.24) * (1 - fade * 0.4);
       for (let by = iy0 + pitch / 2; by <= iy1 - pitch / 2 + 1; by += pitch) {
         for (let bx = ix0 + pitch / 2; bx <= ix1 - pitch / 2 + 1; bx += pitch) {
           if (rand() > density) continue;
@@ -684,6 +728,7 @@ export function planCity(meta: TrajMeta): CityPlan {
     const maxWidth = Math.min(step, (interior - 2 * junctionKeep) / 3.4, 40);
     if (maxWidth < 8) continue;
     const rowInset = Math.max(junctionKeep, TUNING.setback + maxWidth + 4);
+    const blockStart = buildings.length;
     for (let side = 0; side < 4; side++) {
       if (!block.sides[side]) continue;
       const horizontal = side < 2;
@@ -741,26 +786,42 @@ export function planCity(meta: TrajMeta): CityPlan {
       }
     }
 
+    // Courtyard infill: the four frontage rows leave a hole in the middle of
+    // every block, which is invisible from the street and glaring from above.
+    // Fill the near ones through with a lower, cheaper rank so a block reads as
+    // built rather than as a fence around a yard. Decimated shells only — this
+    // is the bulk of the added instances and none of it is ever the subject.
+    for (const spot of buildings.slice(blockStart)) remember(spot);
+
     // Block interiors: lock-ups, sheds and parking structures behind the street
     // wall, so a block seen from above is not a ring of facades around an empty
     // courtyard.
     const shedWidth = 24;
-    const shedPitch = 36;
+    const shedPitch = TUNING.shedPitch;
     const shedMargin = TUNING.setback + maxWidth + 8 + shedWidth / 2;
     if (!green && ix1 - ix0 > shedMargin * 2 + 12 && iy1 - iy0 > shedMargin * 2 + 12) {
       for (let sy = iy0 + shedMargin; sy <= iy1 - shedMargin; sy += shedPitch) {
         for (let sx = ix0 + shedMargin; sx <= ix1 - shedMargin; sx += shedPitch) {
-          if (rand() > 0.5) continue;
-          buildings.push({
-            x: sx + (rand() - 0.5) * 12,
-            y: sy + (rand() - 0.5) * 12,
+          if (rand() > TUNING.shedChance) continue;
+          const sw = shedWidth * (0.58 + rand() * 0.42);
+          const px = sx + (rand() - 0.5) * 12;
+          const py = sy + (rand() - 0.5) * 12;
+          // Jitter plus a coarse pitch means neighbours (and, where two filler
+          // blocks nearly coincide, another block's frontage) can collide;
+          // check what is actually there rather than trusting the margins.
+          if (!freeAt(px, py, sw)) continue;
+          const spot: BuildingSpot = {
+            x: px,
+            y: py,
             rot: Math.round(rand() * 4) * (Math.PI / 2),
-            width: shedWidth * (0.58 + rand() * 0.42),
+            width: sw,
             height: (6 + rand() * 7) * heightFalloff,
             tier: "lowdetail",
             tint: 0.6 + rand() * 0.5,
             pick: rand(),
-          });
+          };
+          buildings.push(spot);
+          remember(spot);
           modelCount++;
         }
       }
