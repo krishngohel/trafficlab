@@ -231,3 +231,36 @@ baseline level. Lessons recorded for any follow-up: (a) train at (or across)
 the evaluation horizon; (b) evaluate on the full horizon from iteration 1 —
 short-horizon validation curves actively misled checkpoint selection here;
 (c) GAT deserves a 150k+ budget before a verdict.
+
+## Iterations 7–8 — the actuated-parity ceiling (post-release campaign)
+
+**Goal.** Beat fully-actuated control everywhere, not just fixed-schedule
+control. Added observation v2 (signal-state one-hot, actuated-style presence
+detectors, episode-progress, neighbor phase+queue summaries; 13 → 29 dims,
+opt-in via `RunConfig.obs_version`) and trained at the full 3600 s evaluation
+horizon.
+
+**Iteration 7 (single/rush, DQN, 100k steps).** Best run 114.5 ± 6.5 s/veh —
+a third consecutive statistical tie with actuated (111.7 ± 6.8) across two
+observation designs and two horizons. Conclusion: gap-out actuation is
+effectively at the ceiling for an isolated intersection; there is no
+meaningful wait time left to reclaim there.
+
+**Iteration 8 (grid2x2/rush; DQN-pressure ×2 100k, IPPO-queue ×2 100k,
+GAT 150k — DQN and GAT stopped externally at 75k/120k).** Ten-seed evals of
+every best checkpoint: 240.8–254.6 s/veh — indistinguishable from fixed
+(247.4 ± 10.7), *worse* than iteration 6's v1 IPPO (227.9 ± 9.7), far from
+actuated (189.3 ± 7.2). The obs-v2 + full-horizon recipe did not transfer its
+single-intersection parity to the grid at these budgets, and two-episode
+training evals over-promised yet again (893–922k total delay ≈ 220–230 s/veh
+equivalents that evaporated under 10 seeds).
+
+**Standing verdict.** Learned control: −20–35% vs fixed/Webster/max-pressure
+everywhere; parity with actuated at isolated intersections; −20% behind
+actuated on grids after six distinct recipes. Beating actuated on networks is
+an open research problem here, not a tuning problem. Ranked next levers:
+(1) action-space redesign — green-extension/gap-out actions so the policy
+refines actuated behavior instead of re-deriving it from phase requests;
+(2) reward directly on waiting time; (3) n-step returns + prioritized replay
+for DQN's sparse credit; (4) 5–10× training budgets with ≥5-seed validation
+evals (2-episode evals repeatedly misled); (5) curriculum from light to rush.

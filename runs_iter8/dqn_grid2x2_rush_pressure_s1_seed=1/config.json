@@ -1,0 +1,23 @@
+{
+  "algo": "dqn",
+  "algo_kwargs": {
+    "reward_scale": 0.02,
+    "warmup": 2000
+  },
+  "decision_interval": 10.0,
+  "demand": "rush",
+  "episode_seconds": 3600.0,
+  "eval_episodes": 2,
+  "eval_every": 25000,
+  "eval_seed_base": 10000,
+  "gamma": 0.9,
+  "lr": 0.0003,
+  "network": "grid2x2",
+  "obs_version": 2,
+  "out_root": "runs",
+  "record_eval_traj": true,
+  "reward": "pressure",
+  "run_name": "dqn_grid2x2_rush_pressure_s1_seed=1",
+  "seed": 1,
+  "total_steps": 100000
+}
