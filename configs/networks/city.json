@@ -1,0 +1,697 @@
+{
+  "type": "explicit",
+  "nodes": [
+    {
+      "id": 0,
+      "x": 0.0,
+      "y": 0.0,
+      "type": "intersection"
+    },
+    {
+      "id": 1,
+      "x": 220.0,
+      "y": 0.0,
+      "type": "intersection"
+    },
+    {
+      "id": 2,
+      "x": 440.0,
+      "y": 0.0,
+      "type": "intersection"
+    },
+    {
+      "id": 3,
+      "x": 660.0,
+      "y": 0.0,
+      "type": "intersection"
+    },
+    {
+      "id": 4,
+      "x": 880.0,
+      "y": 0.0,
+      "type": "intersection"
+    },
+    {
+      "id": 5,
+      "x": 0.0,
+      "y": 220.0,
+      "type": "intersection"
+    },
+    {
+      "id": 6,
+      "x": 220.0,
+      "y": 220.0,
+      "type": "intersection"
+    },
+    {
+      "id": 7,
+      "x": 440.0,
+      "y": 220.0,
+      "type": "intersection"
+    },
+    {
+      "id": 8,
+      "x": 660.0,
+      "y": 220.0,
+      "type": "intersection"
+    },
+    {
+      "id": 9,
+      "x": 880.0,
+      "y": 220.0,
+      "type": "intersection"
+    },
+    {
+      "id": 10,
+      "x": 0.0,
+      "y": 440.0,
+      "type": "intersection"
+    },
+    {
+      "id": 11,
+      "x": 220.0,
+      "y": 440.0,
+      "type": "intersection"
+    },
+    {
+      "id": 12,
+      "x": 440.0,
+      "y": 440.0,
+      "type": "intersection"
+    },
+    {
+      "id": 13,
+      "x": 660.0,
+      "y": 440.0,
+      "type": "intersection"
+    },
+    {
+      "id": 14,
+      "x": 880.0,
+      "y": 440.0,
+      "type": "intersection"
+    },
+    {
+      "id": 15,
+      "x": 0.0,
+      "y": 660.0,
+      "type": "intersection"
+    },
+    {
+      "id": 16,
+      "x": 220.0,
+      "y": 660.0,
+      "type": "intersection"
+    },
+    {
+      "id": 17,
+      "x": 440.0,
+      "y": 660.0,
+      "type": "intersection"
+    },
+    {
+      "id": 18,
+      "x": 660.0,
+      "y": 660.0,
+      "type": "intersection"
+    },
+    {
+      "id": 19,
+      "x": 880.0,
+      "y": 660.0,
+      "type": "intersection"
+    },
+    {
+      "id": 20,
+      "x": 0.0,
+      "y": 880.0,
+      "type": "intersection"
+    },
+    {
+      "id": 21,
+      "x": 220.0,
+      "y": 880.0,
+      "type": "intersection"
+    },
+    {
+      "id": 22,
+      "x": 440.0,
+      "y": 880.0,
+      "type": "intersection"
+    },
+    {
+      "id": 23,
+      "x": 660.0,
+      "y": 880.0,
+      "type": "intersection"
+    },
+    {
+      "id": 24,
+      "x": 880.0,
+      "y": 880.0,
+      "type": "intersection"
+    },
+    {
+      "id": 25,
+      "x": -170.0,
+      "y": 0.0,
+      "type": "boundary"
+    },
+    {
+      "id": 26,
+      "x": 1050.0,
+      "y": 0.0,
+      "type": "boundary"
+    },
+    {
+      "id": 27,
+      "x": -170.0,
+      "y": 220.0,
+      "type": "boundary"
+    },
+    {
+      "id": 28,
+      "x": 1050.0,
+      "y": 220.0,
+      "type": "boundary"
+    },
+    {
+      "id": 29,
+      "x": -170.0,
+      "y": 440.0,
+      "type": "boundary"
+    },
+    {
+      "id": 30,
+      "x": 1050.0,
+      "y": 440.0,
+      "type": "boundary"
+    },
+    {
+      "id": 31,
+      "x": -170.0,
+      "y": 660.0,
+      "type": "boundary"
+    },
+    {
+      "id": 32,
+      "x": 1050.0,
+      "y": 660.0,
+      "type": "boundary"
+    },
+    {
+      "id": 33,
+      "x": -170.0,
+      "y": 880.0,
+      "type": "boundary"
+    },
+    {
+      "id": 34,
+      "x": 1050.0,
+      "y": 880.0,
+      "type": "boundary"
+    },
+    {
+      "id": 35,
+      "x": 0.0,
+      "y": -170.0,
+      "type": "boundary"
+    },
+    {
+      "id": 36,
+      "x": 0.0,
+      "y": 1050.0,
+      "type": "boundary"
+    },
+    {
+      "id": 37,
+      "x": 220.0,
+      "y": -170.0,
+      "type": "boundary"
+    },
+    {
+      "id": 38,
+      "x": 220.0,
+      "y": 1050.0,
+      "type": "boundary"
+    },
+    {
+      "id": 39,
+      "x": 440.0,
+      "y": -170.0,
+      "type": "boundary"
+    },
+    {
+      "id": 40,
+      "x": 440.0,
+      "y": 1050.0,
+      "type": "boundary"
+    },
+    {
+      "id": 41,
+      "x": 660.0,
+      "y": -170.0,
+      "type": "boundary"
+    },
+    {
+      "id": 42,
+      "x": 660.0,
+      "y": 1050.0,
+      "type": "boundary"
+    },
+    {
+      "id": 43,
+      "x": 880.0,
+      "y": -170.0,
+      "type": "boundary"
+    },
+    {
+      "id": 44,
+      "x": 880.0,
+      "y": 1050.0,
+      "type": "boundary"
+    }
+  ],
+  "edges": [
+    {
+      "from": 0,
+      "to": 1,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 5,
+      "to": 6,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 6,
+      "to": 7,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 7,
+      "to": 8,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 8,
+      "to": 9,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 10,
+      "to": 11,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 11,
+      "to": 12,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 12,
+      "to": 13,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 15,
+      "to": 16,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 16,
+      "to": 17,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 17,
+      "to": 18,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 18,
+      "to": 19,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 20,
+      "to": 21,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 21,
+      "to": 22,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 22,
+      "to": 23,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 23,
+      "to": 24,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 0,
+      "to": 5,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 5,
+      "to": 10,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 10,
+      "to": 15,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 15,
+      "to": 20,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 1,
+      "to": 6,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 6,
+      "to": 11,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 11,
+      "to": 16,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 16,
+      "to": 21,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 2,
+      "to": 7,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 7,
+      "to": 12,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 12,
+      "to": 17,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 17,
+      "to": 22,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 3,
+      "to": 8,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 8,
+      "to": 13,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 13,
+      "to": 18,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 18,
+      "to": 23,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 4,
+      "to": 9,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 9,
+      "to": 14,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 14,
+      "to": 19,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 19,
+      "to": 24,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 25,
+      "to": 0,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 26,
+      "to": 4,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 27,
+      "to": 5,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 28,
+      "to": 9,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 29,
+      "to": 10,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 30,
+      "to": 14,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 31,
+      "to": 15,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 32,
+      "to": 19,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 33,
+      "to": 20,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 34,
+      "to": 24,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 35,
+      "to": 0,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 36,
+      "to": 20,
+      "lanes": 1,
+      "two_way": true,
+      "speed_limit": 11.1
+    },
+    {
+      "from": 37,
+      "to": 1,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 38,
+      "to": 21,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 39,
+      "to": 2,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 40,
+      "to": 22,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 41,
+      "to": 3,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 42,
+      "to": 23,
+      "lanes": 3,
+      "two_way": true,
+      "speed_limit": 16.7
+    },
+    {
+      "from": 43,
+      "to": 4,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    },
+    {
+      "from": 44,
+      "to": 24,
+      "lanes": 2,
+      "two_way": true,
+      "speed_limit": 13.9
+    }
+  ]
+}

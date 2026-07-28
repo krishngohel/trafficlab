@@ -312,11 +312,18 @@ export default function Viewer() {
         <div className={styles.dropOverlay}>
           <div className={styles.dropTitle}>Drop a .traj file anywhere</div>
           <div className={styles.demoRow}>
-            <button className={styles.button} onClick={() => loadDemo("synthetic.traj")}>
-              Load synthetic demo
+            <button
+              className={`${styles.button} ${styles.buttonPrimary}`}
+              onClick={() => loadDemo("city.traj")}
+              title="25 signalised intersections, mixed 1/2/3-lane streets, all actively controlled"
+            >
+              Load city demo
             </button>
-            <button className={styles.button} onClick={() => loadDemo("grid2x2_demo.traj")}>
-              Load grid2x2 demo
+            <button className={styles.button} onClick={() => loadDemo("grid4x4_demo.traj")}>
+              4×4 grid
+            </button>
+            <button className={styles.button} onClick={() => loadDemo("synthetic.traj")}>
+              Synthetic
             </button>
           </div>
         </div>

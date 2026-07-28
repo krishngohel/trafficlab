@@ -128,6 +128,17 @@
   border-color: var(--accent);
 }
 
+/* The demo we actually want people to open first. */
+.buttonPrimary {
+  background: #22354f;
+  border-color: var(--accent);
+  color: #eaf1fb;
+}
+
+.buttonPrimary:hover {
+  background: #2b4262;
+}
+
 .error {
   position: absolute;
   top: 12px;
