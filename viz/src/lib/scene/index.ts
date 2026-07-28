@@ -12,7 +12,14 @@ export { buildEnvironment, EnvironmentLayer } from "./environment";
 export { StreetLampLayer } from "./props";
 export { HorizonHaze } from "./haze";
 export { cityPlan, planCity } from "./city";
-export type { BuildingSpot, BuildingTier, CityPlan, CityStreet, TreeSpot } from "./city";
+export type {
+  BuildingSpot,
+  BuildingTier,
+  CityGarage,
+  CityPlan,
+  CityStreet,
+  TreeSpot,
+} from "./city";
 export { VehicleLayer, lerpAngle } from "./vehicles";
 export type { VehicleColorMode, VehiclePose } from "./vehicles";
 export { SignalLayer } from "./signals";

@@ -112,6 +112,47 @@ class PropBuilder {
     this.quad(c[0], c[2], c[3], c[1], color); // -Z
   }
 
+  /**
+   * Box centred on scene (cx, cz), `depth` deep along the unit vector
+   * (dirX, dirZ) and `width` across it. Same winding as `box`, but free to sit
+   * at any heading — which a garage needs, since it faces its own driveway.
+   */
+  orientedBox(
+    cx: number,
+    cz: number,
+    dirX: number,
+    dirZ: number,
+    depth: number,
+    width: number,
+    y0: number,
+    y1: number,
+    color: readonly number[],
+    roof: readonly number[] = color,
+  ): void {
+    const hd = depth / 2;
+    const hw = width / 2;
+    // Perpendicular to (dirX, dirZ) in the ground plane.
+    const px = -dirZ;
+    const pz = dirX;
+    const at = (sd: number, sw: number, y: number) => [
+      cx + dirX * hd * sd + px * hw * sw,
+      y,
+      cz + dirZ * hd * sd + pz * hw * sw,
+    ];
+    const c: number[][] = [];
+    for (const sd of [-1, 1]) {
+      for (const y of [y0, y1]) {
+        for (const sw of [-1, 1]) c.push(at(sd, sw, y));
+      }
+    }
+    this.quad(c[1], c[3], c[7], c[5], color);
+    this.quad(c[0], c[4], c[6], c[2], color);
+    this.quad(c[2], c[6], c[7], c[3], roof);
+    this.quad(c[0], c[1], c[5], c[4], color);
+    this.quad(c[4], c[5], c[7], c[6], color);
+    this.quad(c[0], c[2], c[3], c[1], color);
+  }
+
   /** Vertical prism from y0 to y1 (trunk / building box). */
   prism(
     radius: number,
@@ -190,6 +231,12 @@ export function buildPadGeometry(): THREE.BufferGeometry {
 /** Wall / roof palette for the merged horizon massing, in sRGB. */
 const MASSING_WALLS = [0x8b8985, 0x94908a, 0x7f8184, 0x969087, 0x84837f, 0x8d8781];
 const MASSING_ROOFS = [0x4b4e54, 0x424446, 0x565148];
+
+/** Garage palette: render-brick and breeze-block, with a dark shutter. */
+const GARAGE_WALLS = [0x9a8d7e, 0x8a8f92, 0xa2958a, 0x83837e];
+const GARAGE_ROOF = linear(0x4a4d51);
+const GARAGE_DOOR = linear(0x24272b);
+const GARAGE_TRIM = linear(0xb9b5ac);
 
 /**
  * Scenery for one network: one InstancedMesh per tree and per building model,
@@ -339,6 +386,61 @@ export class EnvironmentLayer {
       const mesh = new THREE.Mesh(this.own(builder.build()), material);
       mesh.name = "massing";
       mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
+    }
+
+    // --- garages --------------------------------------------------------------
+    // One lock-up at the head of every driveway, so the cars the simulator
+    // drives off the street and parks are visibly going somewhere. Thirty
+    // triangles each, merged into a single mesh: one draw call for all of them,
+    // and none at all on a network without the parking feature.
+    if (plan.garages.length > 0) {
+      const builder = new PropBuilder();
+      for (const g of plan.garages) {
+        // Sim (x, y) -> scene (x, -z), so the driveway direction flips in z.
+        const cx = g.x;
+        const cz = -g.y;
+        const dx = g.dirX;
+        const dz = -g.dirY;
+        const wall = new THREE.Color(GARAGE_WALLS[Math.floor(g.pick * GARAGE_WALLS.length)]);
+        const tint = 0.82 + g.pick * 0.3;
+        const walls: readonly number[] = [wall.r * tint, wall.g * tint, wall.b * tint];
+        builder.orientedBox(cx, cz, dx, dz, g.depth, g.width, 0, g.height, walls, GARAGE_ROOF);
+        // A parapet, so the roofline is not one flat slab from above.
+        builder.orientedBox(
+          cx,
+          cz,
+          dx,
+          dz,
+          g.depth * 1.06,
+          g.width * 1.05,
+          g.height,
+          g.height + 0.45,
+          GARAGE_TRIM,
+          GARAGE_TRIM,
+        );
+        // Roller shutter on the street-facing face (-dir), stood 5 cm proud.
+        const doorDepth = 0.1;
+        builder.orientedBox(
+          cx - dx * (g.depth / 2 + doorDepth / 2 - 0.05),
+          cz - dz * (g.depth / 2 + doorDepth / 2 - 0.05),
+          dx,
+          dz,
+          doorDepth,
+          g.width * 0.55,
+          0,
+          Math.min(g.height * 0.66, 3.4),
+          GARAGE_DOOR,
+          GARAGE_DOOR,
+        );
+      }
+      const material = this.ownMaterial(
+        new THREE.MeshStandardMaterial({ roughness: 0.94, metalness: 0, vertexColors: true }),
+      );
+      const mesh = new THREE.Mesh(this.own(builder.build()), material);
+      mesh.name = "garages";
+      mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.group.add(mesh);
     }

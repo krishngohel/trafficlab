@@ -516,6 +516,22 @@ export class RoadLayer {
     for (const corner of plan.corners) addRect(walks, corner, WALK_Y);
     for (const lot of plan.lots) addRect(blockLots, lot, LOT_Y);
 
+    // Off-street parking: a concrete forecourt running from the kerb, under the
+    // driveway's tarmac, to the back wall of the garage. Same merged sidewalk
+    // mesh, so a whole city's worth of them costs no extra draw call — and it
+    // is what stops a driveway reading as a stray 14 m stub of asphalt.
+    for (const garage of plan.garages) {
+      walks.addRect(
+        garage.apronX,
+        garage.apronY,
+        garage.dirX,
+        garage.dirY,
+        garage.apronLength,
+        garage.apronWidth,
+        WALK_Y,
+      );
+    }
+
     // --- asphalt + intersections --------------------------------------------
     this.asphalt = new THREE.MeshStandardMaterial({
       color: 0xffffff,

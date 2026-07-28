@@ -24,7 +24,14 @@
  * plan; `cityPlan()` memoizes it so they can each ask for it independently.
  */
 
-import { hashSeed, laneSegments, mulberry32, type Segment } from "./scatter";
+import {
+  driveways,
+  hashSeed,
+  laneSegments,
+  mulberry32,
+  nodeType,
+  type Segment,
+} from "./scatter";
 import {
   groundPlaneSize,
   intersectionRadii,
@@ -108,6 +115,35 @@ export interface CityRect {
   y1: number;
 }
 
+/**
+ * An off-street garage: the structure at a `parking` node plus the paved
+ * forecourt that runs back down the driveway to the street. Cars visibly drive
+ * up the driveway and stop here, so it gets a building rather than being left
+ * as a stub of tarmac in the middle of a block.
+ *
+ * All of it is oriented along the driveway, which is perpendicular to the
+ * street; `dir` points from the street OUT to the garage.
+ */
+export interface CityGarage {
+  /** Structure footprint centre, sim coordinates. */
+  x: number;
+  y: number;
+  /** Unit vector from the street junction out to the garage. */
+  dirX: number;
+  dirY: number;
+  /** Footprint: `depth` along `dir`, `width` across it (m). */
+  width: number;
+  depth: number;
+  height: number;
+  /** Paved forecourt centre and extents, `length` along `dir` (m). */
+  apronX: number;
+  apronY: number;
+  apronLength: number;
+  apronWidth: number;
+  /** Stable per-garage random in [0, 1), for colour choice. */
+  pick: number;
+}
+
 export interface CityPlan {
   bounds: NetworkBounds;
   /** Half-extent of the built city, from the network centre (m). */
@@ -137,6 +173,8 @@ export interface CityPlan {
   corners: CityRect[];
   /** Paved block interiors. */
   lots: CityRect[];
+  /** One per simulated off-street parking node; empty without the feature. */
+  garages: CityGarage[];
   buildings: BuildingSpot[];
   trees: TreeSpot[];
 }
@@ -192,6 +230,14 @@ const TUNING = {
    */
   shedPitch: 29,
   shedChance: 0.68,
+  /**
+   * Off-street parking. `garageClear` is the daylight kept between a garage's
+   * forecourt and anything the block planner puts down, so a frontage row
+   * breaks around a driveway instead of standing in it.
+   */
+  garageGap: 1.8,
+  garageDepth: 13,
+  garageClear: 2.5,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -303,6 +349,7 @@ function emptyPlan(bounds: NetworkBounds): CityPlan {
     sidewalks: [],
     corners: [],
     lots: [],
+    garages: [],
     buildings: [],
     trees: [],
   };
@@ -310,14 +357,23 @@ function emptyPlan(bounds: NetworkBounds): CityPlan {
 
 export function planCity(meta: TrajMeta): CityPlan {
   const bounds = networkBounds(meta);
-  const segments = laneSegments(meta);
+  // Driveways are not streets: they are 14 m stubs perpendicular to the street,
+  // parked mid-block where no grid line runs. Feeding them to the grid/width
+  // derivation below snaps them onto whichever grid line happens to be within
+  // tolerance and reports the street as ~70 m wide, which is what broke every
+  // downstream measurement on a parking-enabled network. Streets only here; the
+  // full lane set comes back for keep-out.
+  const drives = driveways(meta);
+  const drivewayLanes = new Set<number>();
+  for (const drive of drives) for (const id of drive.lanes) drivewayLanes.add(id);
+  const segments = laneSegments(meta, drivewayLanes);
   if (segments.length === 0) return emptyPlan(bounds);
 
   const rand = mulberry32(hashSeed(`${meta.network_name ?? "network"}:city`));
 
   // --- 1. the grid --------------------------------------------------------
   const radii = intersectionRadii(meta);
-  const junctions = meta.network.nodes.filter((n) => n.type === "intersection");
+  const junctions = meta.network.nodes.filter((n) => nodeType(n) === "intersection");
   const anchors = junctions.length > 0 ? junctions : meta.network.nodes;
   const simXs = uniqueSorted(anchors.map((n) => n.x));
   const simYs = uniqueSorted(anchors.map((n) => n.y));
@@ -339,10 +395,24 @@ export function planCity(meta: TrajMeta): CityPlan {
   // Lanes are grouped onto the grid line they run along, so the filler asphalt
   // can butt straight up against the end of a boundary stub instead of leaving
   // a gap of lawn between the two.
+  const laneWidths = meta.network.lanes
+    .filter((l) => !drivewayLanes.has(l.id))
+    .map((l) => l.width)
+    .sort((a, b) => a - b);
+  const laneWidth = laneWidths.length > 0 ? laneWidths[Math.floor(laneWidths.length / 2)] : 3.5;
+  /**
+   * The widest a carriageway is allowed to be measured as: five lanes off the
+   * centreline covers the fattest avenue any config builds. A lane further out
+   * than that snapped onto a line it is not part of (a driveway, a slip road);
+   * it may extend the paved RUN, but it must never widen the street.
+   */
+  const maxCarriageway = laneWidth * 5;
+
   const simSpans: [Map<number, SimSpan>, Map<number, SimSpan>] = [new Map(), new Map()];
   const offGrid: Segment[] = [];
   const snapTol = spacing * 0.35;
   for (const lane of meta.network.lanes) {
+    if (drivewayLanes.has(lane.id)) continue;
     const pts = lane.polyline;
     for (let i = 0; i + 1 < pts.length; i++) {
       const [x0, y0] = pts[i];
@@ -365,7 +435,8 @@ export function planCity(meta: TrajMeta): CityPlan {
       }
       const lo = axis === 1 ? Math.min(x0, x1) : Math.min(y0, y1);
       const hi = axis === 1 ? Math.max(x0, x1) : Math.max(y0, y1);
-      widen(simSpans[axis], line, lo, hi, Math.abs(raw - line) + lane.width / 2);
+      const offset = Math.abs(raw - line);
+      widen(simSpans[axis], line, lo, hi, offset <= maxCarriageway ? offset + lane.width / 2 : 0);
     }
   }
   // Intersection discs plug the gaps the lane polylines leave at each junction.
@@ -386,8 +457,6 @@ export function planCity(meta: TrajMeta): CityPlan {
   // streets, 1-lane locals) therefore keeps that hierarchy all the way out: the
   // avenue stays an avenue, and the pattern tiles outward past the last
   // simulated street rather than flattening to one width everywhere.
-  const laneWidths = meta.network.lanes.map((l) => l.width).sort((a, b) => a - b);
-  const laneWidth = laneWidths.length > 0 ? laneWidths[Math.floor(laneWidths.length / 2)] : 3.5;
   const simHalf: [Map<number, number>, Map<number, number>] = [new Map(), new Map()];
   for (const axis of [0, 1] as Axis[]) {
     for (const [c, s] of simSpans[axis]) {
@@ -577,7 +646,81 @@ export function planCity(meta: TrajMeta): CityPlan {
     }
   }
 
-  // --- 5. blocks ----------------------------------------------------------
+  // --- 5. off-street parking ----------------------------------------------
+  // Cars drive up these driveways and stop, so each one gets a garage and a
+  // paved forecourt rather than being left as a stub of tarmac in a lawn. The
+  // forecourt's footprint also becomes a keep-out: nothing the block planner
+  // lays down below may stand on a driveway or on a garage.
+  const garages: CityGarage[] = [];
+  const keepOuts: CityRect[] = [];
+  for (const drive of drives) {
+    const width = Math.max(drive.half * 2 + 8, 14);
+    const depth = TUNING.garageDepth;
+    const gap = TUNING.garageGap;
+    // The structure sits just BEYOND the parking node, so a car that has driven
+    // up the driveway comes to rest at its door instead of inside its wall.
+    const x = drive.x + drive.dirX * (gap + depth / 2);
+    const y = drive.y + drive.dirY * (gap + depth / 2);
+    // The forecourt runs from the street kerb to the garage's back wall.
+    const reach = drive.length + gap + depth;
+    const apronX = drive.jx + drive.dirX * (reach / 2);
+    const apronY = drive.jy + drive.dirY * (reach / 2);
+    const apronWidth = Math.max(drive.half * 2 + 4, width * 0.92);
+    garages.push({
+      x,
+      y,
+      dirX: drive.dirX,
+      dirY: drive.dirY,
+      width,
+      depth,
+      height: 4.6 + rand() * 2.4,
+      apronX,
+      apronY,
+      apronLength: reach,
+      apronWidth,
+      pick: rand(),
+    });
+    // Axis-aligned keep-out around the whole thing (forecourt and structure),
+    // which is exact for the perpendicular driveways the simulator builds.
+    const alongX = Math.abs(drive.dirX) * reach;
+    const alongY = Math.abs(drive.dirY) * reach;
+    const acrossX = Math.abs(drive.dirY) * Math.max(apronWidth, width);
+    const acrossY = Math.abs(drive.dirX) * Math.max(apronWidth, width);
+    const hx = (alongX + acrossX) / 2 + TUNING.garageClear;
+    const hy = (alongY + acrossY) / 2 + TUNING.garageClear;
+    keepOuts.push({ x0: apronX - hx, y0: apronY - hy, x1: apronX + hx, y1: apronY + hy });
+  }
+  // One bounding box over the lot, so the test below costs a compare rather
+  // than a scan for the vast majority of candidates (and nothing at all on a
+  // network without parking, which is every fixture that predates the feature).
+  const keepBounds = keepOuts.reduce(
+    (acc, k) => ({
+      x0: Math.min(acc.x0, k.x0),
+      y0: Math.min(acc.y0, k.y0),
+      x1: Math.max(acc.x1, k.x1),
+      y1: Math.max(acc.y1, k.y1),
+    }),
+    { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity },
+  );
+  /** True when a footprint of side `w` at (x, y) fouls a driveway or a garage. */
+  const blocked = (x: number, y: number, w: number): boolean => {
+    if (keepOuts.length === 0) return false;
+    const h = w / 2;
+    if (
+      x + h <= keepBounds.x0 ||
+      x - h >= keepBounds.x1 ||
+      y + h <= keepBounds.y0 ||
+      y - h >= keepBounds.y1
+    ) {
+      return false;
+    }
+    for (const k of keepOuts) {
+      if (x + h > k.x0 && x - h < k.x1 && y + h > k.y0 && y - h < k.y1) return true;
+    }
+    return false;
+  };
+
+  // --- 6. blocks ----------------------------------------------------------
   interface Block {
     x0: number;
     y0: number;
@@ -700,11 +843,15 @@ export function planCity(meta: TrajMeta): CityPlan {
         for (let bx = ix0 + pitch / 2; bx <= ix1 - pitch / 2 + 1; bx += pitch) {
           if (rand() > density) continue;
           const roll = rand();
+          const mx = bx + (rand() - 0.5) * 7;
+          const my = by + (rand() - 0.5) * 7;
+          const mw = pitch * (0.6 + rand() * 0.32);
+          if (blocked(mx, my, mw)) continue;
           buildings.push({
-            x: bx + (rand() - 0.5) * 7,
-            y: by + (rand() - 0.5) * 7,
+            x: mx,
+            y: my,
             rot: 0,
-            width: pitch * (0.6 + rand() * 0.32),
+            width: mw,
             height: (10 + roll * roll * 34) * heightFalloff,
             tier: "massing",
             tint: 0.74 + rand() * 0.46,
@@ -747,6 +894,9 @@ export function planCity(meta: TrajMeta): CityPlan {
         const centre = front + inward * (TUNING.setback + depth / 2);
         const x = horizontal ? along : centre;
         const y = horizontal ? centre : along;
+        // A driveway punches through the street wall: the frontage breaks
+        // around it rather than standing in the mouth of somebody's garage.
+        if (blocked(x, y, width)) continue;
         // +Z toward the street: south 0, north PI, west -PI/2, east +PI/2.
         const rot = side === 0 ? 0 : side === 1 ? Math.PI : side === 2 ? -Math.PI / 2 : Math.PI / 2;
 
@@ -809,7 +959,7 @@ export function planCity(meta: TrajMeta): CityPlan {
           // Jitter plus a coarse pitch means neighbours (and, where two filler
           // blocks nearly coincide, another block's frontage) can collide;
           // check what is actually there rather than trusting the margins.
-          if (!freeAt(px, py, sw)) continue;
+          if (blocked(px, py, sw) || !freeAt(px, py, sw)) continue;
           const spot: BuildingSpot = {
             x: px,
             y: py,
@@ -828,7 +978,7 @@ export function planCity(meta: TrajMeta): CityPlan {
     }
   }
 
-  // --- 6. greenery --------------------------------------------------------
+  // --- 7. greenery --------------------------------------------------------
   const trees: TreeSpot[] = [];
   const tree = (x: number, y: number, height: number) => {
     const warm = rand();
@@ -853,7 +1003,11 @@ export function planCity(meta: TrajMeta): CityPlan {
     for (let py = py0; py <= py1 && parkTrees < TUNING.maxParkTrees; py += 16) {
       for (let px = px0; px <= px1 && parkTrees < TUNING.maxParkTrees; px += 16) {
         if (rand() > 0.72) continue;
-        tree(px + (rand() - 0.5) * 10, py + (rand() - 0.5) * 10, 6.5 + rand() * 4.5);
+        const tx = px + (rand() - 0.5) * 10;
+        const ty = py + (rand() - 0.5) * 10;
+        const height = 6.5 + rand() * 4.5;
+        if (blocked(tx, ty, 5)) continue;
+        tree(tx, ty, height);
         parkTrees++;
       }
     }
@@ -881,7 +1035,12 @@ export function planCity(meta: TrajMeta): CityPlan {
           if (nearCrossing) continue;
           const side = rand() < 0.5 ? -1 : 1;
           const offset = side * plantOffsetOf(axis, c);
-          tree(axis === 0 ? c + offset : x, axis === 0 ? y : c + offset, 6 + rand() * 3.5);
+          const tx = axis === 0 ? c + offset : x;
+          const ty = axis === 0 ? y : c + offset;
+          const height = 6 + rand() * 3.5;
+          // The planting strip is exactly where a driveway crosses the kerb.
+          if (blocked(tx, ty, 5)) continue;
+          tree(tx, ty, height);
           streetTrees++;
         }
       }
@@ -903,6 +1062,7 @@ export function planCity(meta: TrajMeta): CityPlan {
     sidewalks,
     corners,
     lots,
+    garages,
     buildings,
     trees,
   };
