@@ -90,8 +90,30 @@ for (const label of overlays) {
   idx++;
 }
 const fpsAll = await fpsProbe();
-console.log("fps (playing, ALL overlays):", fpsAll.toFixed(1));
+const statsDay = await page.evaluate(() => window.trafficlabViz?.renderStats() ?? null);
+console.log("fps (playing, ALL overlays, DAY):", fpsAll.toFixed(1));
+if (statsDay) console.log("draw calls (day, all overlays):", statsDay.calls);
 await shot("09_all_overlays");
+
+// Same again in the night theme (both themes have to hold the frame budget).
+try {
+  await page.getByRole("button", { name: "Night", exact: true }).click({ timeout: 2500 });
+  await page.waitForTimeout(1400);
+  const fpsNight = await fpsProbe();
+  const statsNight = await page.evaluate(() => window.trafficlabViz?.renderStats() ?? null);
+  console.log("fps (playing, ALL overlays, NIGHT):", fpsNight.toFixed(1));
+  if (statsNight) console.log("draw calls (night, all overlays):", statsNight.calls);
+  await shot("09b_all_overlays_night");
+  const load = await page.evaluate(() => ({
+    ms: window.trafficlabViz?.assetLoadMs ?? -1,
+    bytes: window.trafficlabViz?.assetBytes ?? 0,
+  }));
+  console.log(`assets: ${load.ms.toFixed(0)} ms, ${(load.bytes / 1024).toFixed(0)} KB`);
+  await page.getByRole("button", { name: "Day", exact: true }).click({ timeout: 2500 });
+  await page.waitForTimeout(600);
+} catch {
+  console.log("MISSING Day/Night theme buttons");
+}
 
 // Cameras.
 try {

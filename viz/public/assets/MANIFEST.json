@@ -1,0 +1,47 @@
+{
+  "models": {
+    "cars": [
+      "sedan",
+      "sedan-sports",
+      "hatchback-sports",
+      "suv",
+      "suv-luxury",
+      "van",
+      "taxi",
+      "police",
+      "delivery",
+      "truck-flat"
+    ],
+    "buildings": [
+      "building-a",
+      "building-b",
+      "building-c",
+      "building-e",
+      "building-f",
+      "building-g",
+      "building-h",
+      "building-k"
+    ],
+    "props": [
+      "light-curved",
+      "light-square"
+    ],
+    "trees": [
+      "tree_default",
+      "tree_oak",
+      "tree_tall",
+      "tree_fat",
+      "tree_pineDefaultA",
+      "plant_bushDetailed"
+    ]
+  },
+  "bytes": {
+    "models/cars": 1942001,
+    "models/buildings": 1147010,
+    "models/props": 25150,
+    "models/trees": 64040,
+    "textures": 1763002,
+    "hdri": 3252772
+  },
+  "total": 8195489
+}

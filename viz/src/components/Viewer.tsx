@@ -8,6 +8,7 @@ import {
   type CameraMode,
   type OverlayToggles,
   type SideInfo,
+  type Theme,
 } from "@/lib/viz/engine";
 import { DEFAULT_TOGGLES } from "@/lib/viz/view";
 import ChartsPanel, { buildSideSeries } from "./ChartsPanel";
@@ -40,6 +41,7 @@ export default function Viewer() {
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [cameraMode, setCameraMode] = useState<CameraMode>("orbit");
+  const [theme, setTheme] = useState<Theme>("day");
   const [followId, setFollowId] = useState<number | null>(null);
   const [toggles, setToggles] = useState<OverlayToggles>({ ...DEFAULT_TOGGLES });
   const [selectedK, setSelectedK] = useState(0);
@@ -73,6 +75,9 @@ export default function Viewer() {
       setSpeed(created.clock.speed);
     };
     created.onToast = addToast;
+    // Start pulling the model/texture/HDRI bundle the moment the canvas exists,
+    // so it is usually resident before the first file lands.
+    void created.ensureAssets();
     setEngine(created);
     return () => {
       created.dispose();
@@ -82,8 +87,9 @@ export default function Viewer() {
 
   // --- loading ----------------------------------------------------------------
   const loadPrimary = useCallback(
-    (buffer: ArrayBuffer, name: string) => {
+    async (buffer: ArrayBuffer, name: string) => {
       if (!engine || engine.isRecording) return;
+      await engine.ensureAssets();
       try {
         const info = engine.loadPrimary(buffer, name);
         setInfoA(info);
@@ -100,8 +106,9 @@ export default function Viewer() {
   );
 
   const loadCompare = useCallback(
-    (buffer: ArrayBuffer, name: string) => {
+    async (buffer: ArrayBuffer, name: string) => {
       if (!engine || engine.isRecording) return;
+      await engine.ensureAssets();
       try {
         const { info, warnings } = engine.loadCompare(buffer, name);
         setInfoB(info);
@@ -179,6 +186,14 @@ export default function Viewer() {
     (next: OverlayToggles) => {
       setToggles(next);
       engine?.setToggles(next);
+    },
+    [engine],
+  );
+
+  const changeTheme = useCallback(
+    (next: Theme) => {
+      setTheme(next);
+      engine?.setTheme(next);
     },
     [engine],
   );
@@ -351,6 +366,8 @@ export default function Viewer() {
           toggles={toggles}
           onToggles={changeToggles}
           followId={followId}
+          theme={theme}
+          onTheme={changeTheme}
         />
       )}
 

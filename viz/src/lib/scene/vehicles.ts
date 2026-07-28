@@ -1,15 +1,28 @@
 import * as THREE from "three";
 import { buildCarGeometry, CAR_HEIGHT, CAR_LENGTH, CAR_WIDTH } from "./carModel";
-import { idHue, speedColor, type RGB } from "../ramps";
+import { speedColor, type RGB } from "../ramps";
+import type { SceneAssets, VehicleModelAsset } from "./assets";
 import type { TrajFrame, TrajMeta } from "../traj";
 
 /**
- * All vehicles as a single InstancedMesh of a low-poly car (see `carModel.ts`).
- * Color modes: stable per-id hue, or speed/speed_limit ramp (red = stopped,
- * white = half the limit, blue = at the limit).
+ * The traffic fleet: ONE InstancedMesh per vehicle model (Kenney car kit,
+ * merged to a single geometry each), so a thousand cars cost ~10 draw calls
+ * while still looking like a mixed street rather than a swarm of clones.
+ *
+ * Each vehicle id hashes deterministically into the weighted model mix, so a
+ * car keeps its body across seeks and matches on both sides of a comparison.
+ * Bodywork colour is whatever the model's atlas bakes in; the velocity overlay
+ * *blends* the per-instance colour over it through the material's `uTintMix`
+ * uniform (see `assets.withTintMix`) instead of multiplying it away.
+ *
+ * With no asset bundle (unit tests, or a failed asset fetch) the layer falls
+ * back to the procedural low-poly car in `carModel.ts` — one mesh, same API.
  */
 
 const TWO_PI = Math.PI * 2;
+/** Power-of-two lookup table turning a hashed id into a model index. */
+const MIX_TABLE_BITS = 10;
+const MIX_TABLE_SIZE = 1 << MIX_TABLE_BITS;
 
 export type VehicleColorMode = "id" | "speed";
 
@@ -26,12 +39,38 @@ export interface VehiclePose {
   speed: number;
 }
 
+/** Cheap integer avalanche so consecutive ids do not land in the same model. */
+function hashId(id: number): number {
+  let h = id | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+interface TypeMesh {
+  mesh: THREE.InstancedMesh;
+  /** Half-diagonal of one instance, padding for the bounding sphere. */
+  radius: number;
+  count: number;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
 export class VehicleLayer {
-  readonly mesh: THREE.InstancedMesh;
+  /** Holds one InstancedMesh per model type; add this to the scene. */
+  readonly group = new THREE.Group();
+  readonly meshes: THREE.InstancedMesh[] = [];
   readonly capacity: number;
 
   colorMode: VehicleColorMode = "id";
 
+  private readonly types: TypeMesh[] = [];
+  /** hash -> model index, precomputed from the model weights. */
+  private readonly mixTable: Uint8Array;
+  private readonly ownMaterial: THREE.Material | null;
+  private readonly tintMix: { value: number } | null;
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private readonly rgb: RGB = { r: 0, g: 0, b: 0 };
@@ -45,6 +84,9 @@ export class VehicleLayer {
   private frameA: TrajFrame | null = null;
   private frameB: TrajFrame | null = null;
   private frac = 0;
+  /** Instance slot each drawn vehicle landed in, parallel to frame order. */
+  private slotType = new Uint8Array(0);
+  private slotIndex = new Uint16Array(0);
 
   /** Persistent id -> index maps, rebuilt only when the frame object changes. */
   private readonly aIndex = new Map<number, number>();
@@ -52,34 +94,59 @@ export class VehicleLayer {
   private aIndexOf: TrajFrame | null = null;
   private bIndexOf: TrajFrame | null = null;
 
-  /** Half the diagonal of one car, the padding for the instance bounding sphere. */
-  private readonly instanceRadius: number;
-
-  constructor(capacity = 4096) {
+  constructor(assets: SceneAssets | null = null, capacity = 4096) {
     this.capacity = capacity;
-    const geometry = buildCarGeometry();
-    const material = new THREE.MeshStandardMaterial({
-      roughness: 0.42,
-      metalness: 0.25,
-      // Emissive floor so no car ever reads as a black speck at night.
-      emissive: 0x0e1015,
-      // Windows / tyres / roof highlight ride on the geometry's vertex colors,
-      // which three multiplies with the per-instance body color.
-      vertexColors: true,
-    });
-    this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
-    this.mesh.name = "vehicles";
-    this.mesh.frustumCulled = false;
-    // Allocate the instance color buffer up front.
-    this.mesh.setColorAt(0, this.color.setRGB(1, 1, 1));
-    this.mesh.count = 0;
-    this.instanceRadius = Math.hypot(CAR_LENGTH, CAR_WIDTH, CAR_HEIGHT) / 2;
-    // Own the bounding sphere from the start. If it were left null the renderer
-    // would compute it on the first render — when count is still 0, yielding an
-    // EMPTY sphere that is never invalidated, which silently kills every
-    // subsequent InstancedMesh raycast (click-to-follow). update() refreshes it.
-    this.mesh.boundingSphere = new THREE.Sphere();
-    this.mesh.boundingSphere.makeEmpty();
+    this.group.name = "vehicles";
+
+    const models: VehicleModelAsset[] = assets?.vehicles?.length
+      ? assets.vehicles
+      : [fallbackModel()];
+    const material = assets?.vehicles?.length
+      ? assets.vehicleMaterial
+      : new THREE.MeshStandardMaterial({
+          roughness: 0.42,
+          metalness: 0.25,
+          emissive: 0x0e1015,
+          vertexColors: true,
+        });
+    this.ownMaterial = assets?.vehicles?.length ? null : material;
+    this.tintMix = assets?.vehicleTintMix ?? null;
+
+    const total = models.reduce((sum, m) => sum + m.weight, 0) || 1;
+    for (const model of models) {
+      // Twice the expected share plus a floor, so a lucky hash run never spills
+      // the whole fleet into the overflow type.
+      const share = Math.min(
+        capacity,
+        Math.max(48, Math.ceil(((capacity * model.weight) / total) * 2)),
+      );
+      const mesh = new THREE.InstancedMesh(model.geometry, material, share);
+      mesh.name = `vehicles:${model.name}`;
+      mesh.frustumCulled = false;
+      mesh.castShadow = true;
+      mesh.receiveShadow = false;
+      mesh.setColorAt(0, this.color.setRGB(1, 1, 1));
+      mesh.count = 0;
+      // Own the bounding sphere from the start: three caches it forever once
+      // computed, and computing it at count 0 yields an EMPTY sphere that is
+      // never invalidated — which silently kills every InstancedMesh raycast
+      // (click-to-follow). update() refreshes it.
+      mesh.boundingSphere = new THREE.Sphere();
+      mesh.boundingSphere.makeEmpty();
+      this.meshes.push(mesh);
+      this.group.add(mesh);
+      this.types.push({
+        mesh,
+        radius: Math.hypot(model.size.x, model.size.y, model.size.z) / 2,
+        count: 0,
+        minX: 0,
+        maxX: 0,
+        minZ: 0,
+        maxZ: 0,
+      });
+    }
+
+    this.mixTable = buildMixTable(models);
   }
 
   /** Build the lane-id -> speed-limit table from a file's meta. */
@@ -93,6 +160,11 @@ export class VehicleLayer {
     this.laneLimits = new Float32Array(maxId + 1).fill(0);
     for (const lane of meta.network.lanes) this.laneLimits[lane.id] = lane.speed_limit;
     if (maxLimit > 0) this.fallbackLimit = maxLimit;
+  }
+
+  /** Model index a vehicle id always renders as. */
+  modelIndexFor(id: number): number {
+    return this.mixTable[hashId(id) & (MIX_TABLE_SIZE - 1)];
   }
 
   /**
@@ -112,16 +184,27 @@ export class VehicleLayer {
     this.frameA = a;
     this.frameB = b;
     this.frac = t;
+    if (this.slotType.length < n) {
+      this.slotType = new Uint8Array(n);
+      this.slotIndex = new Uint16Array(n);
+    }
 
     const interpolate = b !== null && b !== a && t > 0;
     const bIndex = interpolate && b !== null ? this.indexFor(b, false) : null;
     const speedMode = this.colorMode === "speed";
+    if (this.tintMix) this.tintMix.value = speedMode ? 1 : 0;
     const limits = this.laneLimits;
     const nLimits = limits.length;
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
+    const types = this.types;
+    const nTypes = types.length;
+    for (let k = 0; k < nTypes; k++) {
+      const type = types[k];
+      type.count = 0;
+      type.minX = Infinity;
+      type.maxX = -Infinity;
+      type.minZ = Infinity;
+      type.maxZ = -Infinity;
+    }
 
     for (let i = 0; i < n; i++) {
       let x = a.x[i];
@@ -137,48 +220,96 @@ export class VehicleLayer {
           speed += (b.speed[j] - speed) * t;
         }
       }
+
+      // Pick the model, spilling into the commonest type when a bucket is full.
+      let k = nTypes === 1 ? 0 : this.mixTable[hashId(a.id[i]) & (MIX_TABLE_SIZE - 1)];
+      let type = types[k];
+      if (type.count >= type.mesh.instanceMatrix.count) {
+        k = 0;
+        type = types[0];
+        if (type.count >= type.mesh.instanceMatrix.count) continue;
+      }
+      const slot = type.count++;
+      this.slotType[i] = k;
+      this.slotIndex[i] = slot;
+
       // Sim (x, y, heading CCW from +X) -> scene (x, -z, rotation about +Y).
       this.dummy.position.set(x, 0, -y);
       this.dummy.rotation.set(0, heading, 0);
       this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, this.dummy.matrix);
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (-y < minZ) minZ = -y;
-      if (-y > maxZ) maxZ = -y;
+      type.mesh.setMatrixAt(slot, this.dummy.matrix);
+      const z = -y;
+      if (x < type.minX) type.minX = x;
+      if (x > type.maxX) type.maxX = x;
+      if (z < type.minZ) type.minZ = z;
+      if (z > type.maxZ) type.maxZ = z;
 
       if (speedMode) {
         const lane = a.lane[i];
         const limit = lane < nLimits && limits[lane] > 0 ? limits[lane] : this.fallbackLimit;
         speedColor(speed / limit, this.rgb);
-        this.mesh.setColorAt(i, this.color.setRGB(this.rgb.r, this.rgb.g, this.rgb.b));
-      } else {
-        this.mesh.setColorAt(i, this.color.setHSL(idHue(a.id[i]), 0.85, 0.6));
+        type.mesh.setColorAt(slot, this.color.setRGB(this.rgb.r, this.rgb.g, this.rgb.b));
+      } else if (this.tintMix === null) {
+        // Fallback material multiplies instanceColor in, so a slot left over
+        // from speed mode has to be reset. The real material blends by
+        // `uTintMix`, which is 0 here, so its instance colors are ignored.
+        type.mesh.setColorAt(slot, this.color.setRGB(1, 1, 1));
       }
     }
 
-    this.mesh.count = n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-
-    // Keep the instance bounding sphere in step with the instances themselves:
-    // three caches it forever once computed, and InstancedMesh.raycast rejects
-    // the whole mesh when the sphere misses. Derived from the min/max collected
-    // above, so this costs nothing beyond the loop that was already running.
-    const sphere = this.mesh.boundingSphere!;
-    if (n === 0) {
-      sphere.makeEmpty();
-    } else {
-      sphere.center.set((minX + maxX) / 2, CAR_HEIGHT / 2, (minZ + maxZ) / 2);
-      sphere.radius = Math.hypot(maxX - minX, maxZ - minZ) / 2 + this.instanceRadius;
+    for (let k = 0; k < nTypes; k++) {
+      const type = types[k];
+      const mesh = type.mesh;
+      mesh.count = type.count;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // Keep each instance bounding sphere in step with its instances: three
+      // caches it forever once computed, and InstancedMesh.raycast rejects the
+      // whole mesh when the sphere misses.
+      const sphere = mesh.boundingSphere!;
+      if (type.count === 0) {
+        sphere.makeEmpty();
+      } else {
+        sphere.center.set(
+          (type.minX + type.maxX) / 2,
+          type.radius / 2,
+          (type.minZ + type.maxZ) / 2,
+        );
+        sphere.radius =
+          Math.hypot(type.maxX - type.minX, type.maxZ - type.minZ) / 2 + type.radius;
+      }
     }
   }
 
-  /** Vehicle id rendered at instance `instanceId` in the last update, or -1. */
-  idAt(instanceId: number): number {
+  /** Vehicle id drawn at `instanceId` of `mesh` in the last update, or -1. */
+  idAt(mesh: THREE.InstancedMesh, instanceId: number): number {
     const a = this.frameA;
-    if (!a || instanceId < 0 || instanceId >= Math.min(a.count, this.capacity)) return -1;
-    return a.id[instanceId];
+    if (!a) return -1;
+    const k = this.meshes.indexOf(mesh);
+    if (k < 0) return -1;
+    const n = Math.min(a.count, this.capacity);
+    for (let i = 0; i < n; i++) {
+      if (this.slotType[i] === k && this.slotIndex[i] === instanceId) return a.id[i];
+    }
+    return -1;
+  }
+
+  /** Nearest vehicle id under `raycaster`, or -1. */
+  pick(raycaster: THREE.Raycaster): number {
+    let best = Infinity;
+    let bestId = -1;
+    for (const mesh of this.meshes) {
+      if (mesh.count === 0) continue;
+      for (const hit of raycaster.intersectObject(mesh, false)) {
+        if (hit.instanceId === undefined || hit.distance >= best) continue;
+        const id = this.idAt(mesh, hit.instanceId);
+        if (id >= 0) {
+          best = hit.distance;
+          bestId = id;
+        }
+      }
+    }
+    return bestId;
   }
 
   /**
@@ -208,6 +339,10 @@ export class VehicleLayer {
     return true;
   }
 
+  setShadows(cast: boolean): void {
+    for (const mesh of this.meshes) mesh.castShadow = cast;
+  }
+
   private indexFor(frame: TrajFrame, isA: boolean): Map<number, number> {
     const map = isA ? this.aIndex : this.bIndex;
     const current = isA ? this.aIndexOf : this.bIndexOf;
@@ -221,8 +356,44 @@ export class VehicleLayer {
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.dispose();
+    for (const mesh of this.meshes) mesh.dispose();
+    // Model geometries and the atlas material are shared with every other view,
+    // so only a locally built fallback material is ours to free.
+    this.ownMaterial?.dispose();
+    if (this.ownMaterial) {
+      for (const mesh of this.meshes) mesh.geometry.dispose();
+    }
+    this.meshes.length = 0;
+    this.types.length = 0;
+    this.group.clear();
   }
+}
+
+/** Weighted hash -> model-index lookup table (exported for the unit tests). */
+export function buildMixTable(models: readonly { weight: number }[]): Uint8Array {
+  const table = new Uint8Array(MIX_TABLE_SIZE);
+  const total = models.reduce((sum, m) => sum + m.weight, 0) || 1;
+  let cursor = 0;
+  for (let k = 0; k < models.length; k++) {
+    const end =
+      k === models.length - 1
+        ? MIX_TABLE_SIZE
+        : Math.min(
+            MIX_TABLE_SIZE,
+            cursor + Math.round((models[k].weight / total) * MIX_TABLE_SIZE),
+          );
+    table.fill(k, cursor, end);
+    cursor = end;
+  }
+  return table;
+}
+
+/** The procedural low-poly car, wrapped as a model asset. */
+function fallbackModel(): VehicleModelAsset {
+  return {
+    name: "lowpoly",
+    weight: 1,
+    geometry: buildCarGeometry(),
+    size: new THREE.Vector3(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH),
+  };
 }

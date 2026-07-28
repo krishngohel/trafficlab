@@ -29,6 +29,11 @@ export interface TreeSpot {
 export interface PadSpot {
   x: number;
   y: number;
+  /**
+   * Rotation about the vertical axis (rad), in SCENE space: the model's local
+   * +Z faces the nearest road, so the buildings front the street instead of
+   * sitting at random angles in a field.
+   */
   rot: number;
   /** Footprint and height in metres. */
   width: number;
@@ -53,10 +58,18 @@ export interface Scatter {
 
 const DEFAULTS = {
   clearance: 14,
+  padClearance: 22,
   maxTrees: 400,
-  padClearance: 34,
-  maxPads: 24,
 } as const;
+
+/**
+ * Buildings per metre of lane, when the caller does not pin `maxPads`. A fixed
+ * cap turns a single-intersection network into a dense office park and leaves a
+ * grid4x4 looking empty, so the count follows how much street there is to line.
+ */
+const PADS_PER_LANE_METRE = 1 / 220;
+const MIN_PADS = 6;
+const MAX_PADS = 40;
 
 /** FNV-1a over a string — a stable seed for the PRNG. */
 export function hashSeed(text: string): number {
@@ -188,6 +201,38 @@ export function isClear(
   return inBand(px, py, segments, discs, clearance);
 }
 
+/**
+ * Scene-space Y rotation that turns a model's local +Z toward the nearest road,
+ * so buildings front the street. Falls back to 0 when there is no road at all.
+ */
+export function facingNearestRoad(
+  px: number,
+  py: number,
+  segments: readonly Segment[],
+): number {
+  let bestSq = Infinity;
+  let cx = px;
+  let cy = py;
+  for (const s of segments) {
+    const dx = s.x1 - s.x0;
+    const dy = s.y1 - s.y0;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq > 0 ? ((px - s.x0) * dx + (py - s.y0) * dy) / lenSq : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const qx = s.x0 + dx * t;
+    const qy = s.y0 + dy * t;
+    const distSq = (px - qx) * (px - qx) + (py - qy) * (py - qy);
+    if (distSq < bestSq) {
+      bestSq = distSq;
+      cx = qx;
+      cy = qy;
+    }
+  }
+  if (!Number.isFinite(bestSq) || bestSq === 0) return 0;
+  // Sim (x, y) -> scene (x, -z): the facing vector is (dx, -dy).
+  return Math.atan2(cx - px, -(cy - py));
+}
+
 /** Deterministic Fisher-Yates, so a cap never biases the scatter spatially. */
 function shuffle<T>(items: T[], rand: () => number): T[] {
   for (let i = items.length - 1; i > 0; i--) {
@@ -206,6 +251,10 @@ export function scatterEnvironment(meta: TrajMeta, options: ScatterOptions = {})
   const opts = { ...DEFAULTS, ...options };
   const bounds = networkBounds(meta);
   const segments = laneSegments(meta);
+  const laneMetres = segments.reduce((sum, s) => sum + Math.hypot(s.x1 - s.x0, s.y1 - s.y0), 0);
+  const maxPads =
+    options.maxPads ??
+    Math.min(Math.max(Math.round(laneMetres * PADS_PER_LANE_METRE), MIN_PADS), MAX_PADS);
   const discs: NodeDisc[] = [];
   const radii = intersectionRadii(meta);
   for (const node of meta.network.nodes) {
@@ -221,55 +270,91 @@ export function scatterEnvironment(meta: TrajMeta, options: ScatterOptions = {})
   const maxY = bounds.maxY + margin;
   const area = Math.max((maxX - minX) * (maxY - minY), 1);
 
-  /**
-   * Candidate spacing scales with the network so a grid4x4 does not exhaust
-   * the cap in its southern strip while a single intersection gets a
-   * postage-stamp forest. ~3 candidates per slot we intend to keep.
-   */
-  const spacing = (slots: number, lo: number, hi: number) =>
-    Math.min(Math.max(Math.sqrt(area / Math.max(slots * 3, 1)), lo), hi);
-
   // --- building pads ---------------------------------------------------------
-  const padStep = spacing(opts.maxPads, 46, 190);
+  // Buildings are placed along STREET FRONTAGES, not on a grid over the whole
+  // map: walking every lane at a fixed setback puts a row of facades behind the
+  // verge on each side of a street, which is what makes a network read as a
+  // town instead of towers dropped in a field. Everything still has to clear
+  // `padClearance` of every lane and intersection, so a candidate that lands in
+  // the opposing carriageway or an intersection mouth is simply dropped.
   const padCandidates: PadSpot[] = [];
-  for (let gy = minY + padStep / 2; gy <= maxY; gy += padStep) {
-    for (let gx = minX + padStep / 2; gx <= maxX; gx += padStep) {
-      const x = gx + (rand() - 0.5) * padStep * 0.45;
-      const y = gy + (rand() - 0.5) * padStep * 0.45;
-      const width = 22 + rand() * 30;
-      const depth = 22 + rand() * 30;
-      // Tall enough to read as a massed block from any camera angle — a flat
-      // slab just looks like a hole in the ground from above.
-      const height = 10 + rand() * 26;
-      const tint = 0.75 + rand() * 0.5;
-      const rot = (rand() - 0.5) * 0.25;
-      // Sample the four corners too: a pad is a footprint, not a point.
-      const reach = Math.max(width, depth) / 2;
-      // Keep the massing inside (or immediately around) the blocks — a tower
-      // stranded 200 m from the nearest road just reads as a floating box.
-      if (!inBand(x, y, segments, discs, opts.padClearance, opts.padClearance * 2.4)) continue;
-      if (
-        !isClear(x + reach, y, segments, discs, opts.padClearance * 0.5) ||
-        !isClear(x - reach, y, segments, discs, opts.padClearance * 0.5) ||
-        !isClear(x, y + reach, segments, discs, opts.padClearance * 0.5) ||
-        !isClear(x, y - reach, segments, discs, opts.padClearance * 0.5)
-      ) {
-        continue;
+  const frontageStep = 30;
+  for (const lane of meta.network.lanes) {
+    const pts = lane.polyline;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      const segLen = Math.hypot(x1 - x0, y1 - y0);
+      if (segLen < frontageStep) continue;
+      const ux = (x1 - x0) / segLen;
+      const uy = (y1 - y0) / segLen;
+      const slots = Math.floor(segLen / frontageStep);
+      for (let k = 0; k < slots; k++) {
+        for (const side of [1, -1]) {
+          const along = (k + 0.5) * frontageStep + (rand() - 0.5) * frontageStep * 0.5;
+          // Town-scale plots: a 14-28 m frontage reads as a commercial block
+          // next to 3.5 m lanes, where 22-52 m slabs read as warehouses.
+          const width = 12 + rand() * 13;
+          const depth = width * (0.86 + rand() * 0.3);
+          // Tall enough to read as a massed block from any camera angle — a
+          // flat slab just looks like a hole in the ground from above.
+          const height = 10 + rand() * 26;
+          const tint = 0.82 + rand() * 0.36;
+          const jitter = (rand() - 0.5) * 0.18;
+          const setback = opts.padClearance + rand() * 14;
+          const x = x0 + ux * along + -uy * side * setback;
+          const y = y0 + uy * along + ux * side * setback;
+          // Sample the four corners too: a pad is a footprint, not a point.
+          const reach = Math.max(width, depth) / 2;
+          if (!isClear(x, y, segments, discs, opts.padClearance)) continue;
+          if (
+            !isClear(x + reach, y, segments, discs, opts.padClearance * 0.45) ||
+            !isClear(x - reach, y, segments, discs, opts.padClearance * 0.45) ||
+            !isClear(x, y + reach, segments, discs, opts.padClearance * 0.45) ||
+            !isClear(x, y - reach, segments, discs, opts.padClearance * 0.45)
+          ) {
+            continue;
+          }
+          padCandidates.push({
+            x,
+            y,
+            rot: facingNearestRoad(x, y, segments) + jitter,
+            width,
+            depth,
+            height,
+            tint,
+          });
+        }
       }
-      padCandidates.push({ x, y, rot, width, depth, height, tint });
     }
   }
-  const pads = shuffle(padCandidates, rand).slice(0, opts.maxPads);
+  // Shuffle first so the cap does not favour the lowest-numbered lanes, then
+  // keep only pads whose footprints do not collide with an already-kept one.
+  const pads: PadSpot[] = [];
+  for (const candidate of shuffle(padCandidates, rand)) {
+    if (pads.length >= maxPads) break;
+    const reach = Math.max(candidate.width, candidate.depth) / 2;
+    let clash = false;
+    for (const kept of pads) {
+      const gap = reach + Math.max(kept.width, kept.depth) / 2 + 6;
+      if (Math.abs(candidate.x - kept.x) < gap && Math.abs(candidate.y - kept.y) < gap) {
+        clash = true;
+        break;
+      }
+    }
+    if (!clash) pads.push(candidate);
+  }
 
   // --- trees ------------------------------------------------------------------
   // Trees are sampled on their own fine grid (independent of the cap) so the
   // narrow band below is actually hit; the cell budget keeps the sweep cheap
   // even on the biggest network.
   const step = Math.min(Math.max(Math.sqrt(area / 12000), 13), 26);
-  // Street trees: a band just off the kerb. Wide enough to look planted rather
-  // than fenced, tight enough that the scenery frames the streets instead of
-  // dissolving into open country.
-  const spread = opts.clearance + 30;
+  // Street trees: a planting strip just off the kerb, in front of the building
+  // frontages (which start at `padClearance`). Wide enough to look planted
+  // rather than fenced, tight enough that the scenery frames the streets
+  // instead of dissolving into open country.
+  const spread = opts.clearance + 17;
   const treeCandidates: TreeSpot[] = [];
   for (let gy = minY; gy <= maxY; gy += step) {
     for (let gx = minX; gx <= maxX; gx += step) {

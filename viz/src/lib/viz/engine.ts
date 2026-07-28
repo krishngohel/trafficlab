@@ -1,6 +1,14 @@
 import * as THREE from "three";
 
-import type { VehiclePose } from "../scene";
+import {
+  buildEnvironmentMap,
+  loadedAssets,
+  loadSceneAssets,
+  THEMES,
+  type SceneAssets,
+  type Theme,
+  type VehiclePose,
+} from "../scene";
 import { parseTraj, type TrajMeta } from "../traj";
 import { CameraRig, type CameraMode } from "./cameras";
 import { PlaybackClock } from "./playback";
@@ -9,6 +17,7 @@ import { DEFAULT_TOGGLES, SceneView, type OverlayToggles } from "./view";
 
 export type { CameraMode } from "./cameras";
 export type { OverlayToggles } from "./view";
+export type { Theme } from "../scene";
 
 /** Static facts about a loaded side, safe to hold in React state. */
 export interface SideInfo {
@@ -75,6 +84,10 @@ export class VizEngine {
   private compareActive = false;
   private splitFraction = 0.5;
   private follow: { side: 0 | 1; id: number } | null = null;
+  private themeName: Theme = "day";
+  private assets: SceneAssets | null = null;
+  /** Draw-call budget check: logged once, a few frames after the first load. */
+  private statsFrame = -1;
 
   private recording = false;
   private recordCancelled = false;
@@ -93,8 +106,11 @@ export class VizEngine {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
-    this.renderer.setClearColor(0x0b0e14);
+    this.renderer.toneMappingExposure = THEMES[this.themeName].exposure;
+    this.renderer.setClearColor(THEMES[this.themeName].skyColor);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.assets = loadedAssets();
     this.width = Math.max(host.clientWidth, 1);
     this.height = Math.max(host.clientHeight, 1);
     this.renderer.setSize(this.width, this.height);
@@ -122,6 +138,21 @@ export class VizEngine {
     return { x: p.x, y: p.y, z: p.z };
   }
 
+  /**
+   * Place the orbit camera exactly, for the headless review scripts that need
+   * reproducible framing. Nothing in the app calls this.
+   */
+  setCameraPose(
+    target: { x: number; y?: number; z: number },
+    position: { x: number; y: number; z: number },
+  ): void {
+    if (this.follow) this.exitFollow();
+    this.rig.setPose(
+      this.vec.set(target.x, target.y ?? 0, target.z),
+      new THREE.Vector3(position.x, position.y, position.z),
+    );
+  }
+
   get canvas(): HTMLCanvasElement {
     return this.renderer.domElement;
   }
@@ -142,15 +173,73 @@ export class VizEngine {
     return this.rig.mode;
   }
 
+  get theme(): Theme {
+    return this.themeName;
+  }
+
   getView(side: 0 | 1): SceneView | null {
     return side === 1 && !this.compareActive ? null : this.views[side];
+  }
+
+  // --- assets / theme --------------------------------------------------------
+
+  /**
+   * Fetch the model/texture/HDRI bundle (idempotent, shared page-wide). React
+   * awaits this before handing over a .traj so a scene is never built with a
+   * half-loaded art set.
+   */
+  async ensureAssets(): Promise<void> {
+    if (this.assets) return;
+    try {
+      this.assets = await loadSceneAssets();
+      console.log(
+        `[trafficlab] assets ready in ${this.assets.loadMs.toFixed(0)} ms` +
+          (this.assets.bytes ? ` (${(this.assets.bytes / 1024).toFixed(0)} KB)` : ""),
+      );
+      this.applyTheme();
+    } catch (err) {
+      console.warn("[trafficlab] asset load failed, falling back to procedural scenery", err);
+    }
+  }
+
+  /** Milliseconds the asset bundle took to load, or -1 if it has not. */
+  get assetLoadMs(): number {
+    return this.assets?.loadMs ?? -1;
+  }
+
+  get assetBytes(): number {
+    return this.assets?.bytes ?? 0;
+  }
+
+  /** Live renderer counters, for the headless perf checks. */
+  renderStats(): { calls: number; triangles: number; programs: number } {
+    return {
+      calls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      programs: this.renderer.info.programs?.length ?? 0,
+    };
+  }
+
+  setTheme(theme: Theme): void {
+    if (theme === this.themeName) return;
+    this.themeName = theme;
+    this.applyTheme();
+  }
+
+  private applyTheme(): void {
+    const spec = THEMES[this.themeName];
+    this.renderer.toneMappingExposure = spec.exposure;
+    this.renderer.setClearColor(spec.skyColor);
+    const hdr = this.assets?.hdri[this.themeName] ?? null;
+    const environment = hdr ? buildEnvironmentMap(this.renderer, hdr) : null;
+    for (const view of this.views) view?.setTheme(this.themeName, hdr, environment);
   }
 
   // --- loading -------------------------------------------------------------
 
   loadPrimary(buffer: ArrayBuffer, name: string): SideInfo {
     const traj = parseTraj(buffer); // throws TrajParseError on bad input
-    const view = new SceneView(traj);
+    const view = new SceneView(traj, this.assets, this.themeName);
     this.closeCompare();
     this.views[0]?.dispose();
     this.views[0] = view;
@@ -160,6 +249,8 @@ export class VizEngine {
     this.clock.seek(0);
     this.clock.playing = true;
     this.rig.frameNetwork(view.bounds);
+    this.applyTheme();
+    this.statsFrame = 0;
     return VizEngine.sideInfo(traj.meta, name, traj.numFrames, view.duration);
   }
 
@@ -168,12 +259,13 @@ export class VizEngine {
     const primary = this.views[0];
     if (!primary) throw new Error("load a primary .traj before comparing");
     const traj = parseTraj(buffer);
-    const view = new SceneView(traj);
+    const view = new SceneView(traj, this.assets, this.themeName);
     this.views[1]?.dispose();
     this.views[1] = view;
     view.applyToggles(this.toggles);
     this.compareActive = true;
     this.clock.duration = Math.max(primary.duration, view.duration);
+    this.applyTheme();
 
     const a = primary.traj.meta;
     const b = traj.meta;
@@ -297,15 +389,8 @@ export class VizEngine {
     // building the ray from it.
     camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.ndc, camera);
-    const hits = this.raycaster.intersectObject(view.vehicles.mesh, false);
-    for (const hit of hits) {
-      if (hit.instanceId === undefined) continue;
-      const id = view.vehicles.idAt(hit.instanceId);
-      if (id >= 0) {
-        this.beginFollow(side, id);
-        return;
-      }
-    }
+    const id = view.vehicles.pick(this.raycaster);
+    if (id >= 0) this.beginFollow(side, id);
   }
 
   beginFollow(side: 0 | 1, id: number): void {
@@ -423,7 +508,16 @@ export class VizEngine {
     }
 
     this.rig.update();
+    this.focusShadows();
     this.renderFrame();
+    if (this.statsFrame >= 0 && ++this.statsFrame === 30) {
+      this.statsFrame = -1;
+      const stats = this.renderStats();
+      console.log(
+        `[trafficlab] draw calls ${stats.calls}, triangles ${stats.triangles.toLocaleString()}, ` +
+          `programs ${stats.programs}, theme ${this.themeName}`,
+      );
+    }
     // Offer the just-drawn frame to the recorder while the WebGL drawing buffer
     // is still intact. The recorder rate-limits internally: capturing every
     // rendered frame overruns the browser's readback/encode pipeline on dense
@@ -431,6 +525,16 @@ export class VizEngine {
     if (this.recording) this.recorder.captureFrame(now);
     for (const cb of this.afterFrame) cb();
   };
+
+  /**
+   * Retarget both views' shadow frusta at whatever the camera is looking at,
+   * sized by how far away it is — one 2048 map covering a whole grid4x4 would
+   * put an entire car inside a single texel.
+   */
+  private focusShadows(): void {
+    const target = this.rig.focus();
+    for (const view of this.views) view?.setShadowFocus(target.x, target.z, target.reach);
+  }
 
   private renderFrame(): void {
     const renderer = this.renderer;

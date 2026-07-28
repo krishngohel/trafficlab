@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# CC0 art staging: the full Kenney kits + 2k Poly Haven maps (~115 MB). Only the
+# selection in public/assets/ (built by scripts/prepare_assets.mjs) is committed
+# and served.
+/assets_src
+# scratch output from the headless review scripts
+/.visual

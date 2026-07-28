@@ -59,6 +59,20 @@ export class CameraRig {
     return this.mode === "top" ? this.ortho : this.persp;
   }
 
+  /**
+   * What the active camera is looking at, plus how much ground it can see —
+   * the shadow-frustum driver. Top-down is orthographic, so its reach comes
+   * from the fitted half-height instead of a distance.
+   */
+  focus(): { x: number; z: number; reach: number } {
+    if (this.mode === "top") {
+      const t = this.topControls.target;
+      return { x: t.x, z: t.z, reach: (this.orthoHalfH / this.ortho.zoom) * 2 };
+    }
+    const t = this.orbitControls.target;
+    return { x: t.x, z: t.z, reach: this.persp.position.distanceTo(t) };
+  }
+
   /** Initial framing of a freshly loaded network (orbit + top-down). */
   frameNetwork(bounds: NetworkBounds): void {
     this.bounds = bounds;
@@ -84,6 +98,17 @@ export class CameraRig {
     this.ortho.position.set(b.centerX, 900, -b.centerY);
     this.topControls.target.set(b.centerX, 0, -b.centerY);
     this.topControls.update();
+  }
+
+  /**
+   * Drop the orbit camera at an exact pose. Only the headless review scripts
+   * use this — it is how they frame reproducible day/night stills.
+   */
+  setPose(target: THREE.Vector3, position: THREE.Vector3): void {
+    this.setMode("orbit");
+    this.orbitControls.target.copy(target);
+    this.persp.position.copy(position);
+    this.orbitControls.update();
   }
 
   setMode(mode: CameraMode): void {

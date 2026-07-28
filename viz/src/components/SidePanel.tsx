@@ -1,6 +1,6 @@
 "use client";
 
-import type { CameraMode, OverlayToggles } from "@/lib/viz/engine";
+import type { CameraMode, OverlayToggles, Theme } from "@/lib/viz/engine";
 import styles from "./Viewer.module.css";
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   toggles: OverlayToggles;
   onToggles: (toggles: OverlayToggles) => void;
   followId: number | null;
+  theme: Theme;
+  onTheme: (theme: Theme) => void;
 }
 
 const OVERLAY_ITEMS: { key: keyof OverlayToggles; label: string; sub?: boolean }[] = [
@@ -21,7 +23,15 @@ const OVERLAY_ITEMS: { key: keyof OverlayToggles; label: string; sub?: boolean }
 ];
 
 /** Collapsible right-hand panel: camera modes + overlay layer toggles. */
-export default function SidePanel({ cameraMode, onCameraMode, toggles, onToggles, followId }: Props) {
+export default function SidePanel({
+  cameraMode,
+  onCameraMode,
+  toggles,
+  onToggles,
+  followId,
+  theme,
+  onTheme,
+}: Props) {
   const camBtn = (mode: "orbit" | "top", label: string, active: boolean) => (
     <button
       className={`${styles.camBtn} ${active ? styles.camBtnActive : ""}`}
@@ -34,8 +44,28 @@ export default function SidePanel({ cameraMode, onCameraMode, toggles, onToggles
     </button>
   );
 
+  const themeBtn = (value: Theme, label: string) => (
+    <button
+      className={`${styles.camBtn} ${theme === value ? styles.camBtnActive : ""}`}
+      onClick={(e) => {
+        e.currentTarget.blur();
+        onTheme(value);
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className={styles.sidePanel}>
+      <div className={styles.panelSection}>
+        <div className={styles.panelTitle}>Lighting</div>
+        <div className={styles.camRow}>
+          {themeBtn("day", "Day")}
+          {themeBtn("night", "Night")}
+        </div>
+      </div>
+
       <div className={styles.panelSection}>
         <div className={styles.panelTitle}>Camera</div>
         <div className={styles.camRow}>

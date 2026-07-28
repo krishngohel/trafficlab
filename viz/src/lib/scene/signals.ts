@@ -1,19 +1,28 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import type { TrajFrame, TrajMeta } from "../traj";
+import type { SceneAssets } from "./assets";
+import type { ThemeSpec } from "./theme";
+import type { TrajFrame, TrajLane, TrajMeta } from "../traj";
 import { networkBounds } from "./roads";
 
 /**
- * One signal indicator at the end of each approach lane (a lane that is
- * `from_lane` of at least one connection): a short dark pole, a bright
- * emissive head sphere, and a billboarded additive glow so the state reads
- * from far away without postprocessing. State is derived per frame from the
- * signal records of the connections leaving that lane:
+ * Mast-arm traffic signals: one mast per approach link, one signal head per
+ * approach lane.
+ *
+ * The mast is the roads-kit `light-curved` model scaled to ~6.4 m, stood on the
+ * kerb beyond the outermost lane. A slim dark arm carries on from it across the
+ * link and a small housing hangs over each lane's stop line. Only the 0.22 m
+ * lens is emissive — the old 1.2 m glow spheres dwarfed the whole intersection
+ * in a closeup. The billboarded additive halo is world-sized but *pixel
+ * clamped*, so it stays legible at overview zoom without swallowing the pole up
+ * close.
+ *
+ * State per lane, from the signal records of the connections leaving it:
  *   green  — some connection is in the active phase and the signal is green
  *   yellow — some connection is in the outgoing phase and the signal is yellow
  *   red    — otherwise (including all-red)
  *
- * Draw calls: 1 merged pole mesh + 1 instanced head mesh + 1 glow Points.
+ * Draw calls: 1 merged hardware mesh + 1 instanced lens + 1 glow Points = 3.
  */
 
 type HeadState = 0 | 1 | 2; // green | yellow | red
@@ -27,37 +36,40 @@ interface HeadConn {
 }
 
 interface Head {
-  /** Instance index in the head mesh / glow attribute. */
+  /** Instance index in the lens mesh / glow attribute. */
   index: number;
   /** Connections leaving this lane. */
   conns: HeadConn[];
   last: HeadState | -1;
 }
 
-const HEAD_RADIUS = 1.2;
-const HEAD_HEIGHT = 4.6;
-const POLE_SIDE = 0.26;
-/** Head color multiplier (>1 so ACES rolls it off like a bright emitter). */
-const HEAD_INTENSITY = 1.7;
-/** Glow color multiplier (additive blend, so >1 reads as bloom). */
-const GLOW_INTENSITY = 1.15;
-/**
- * PointsMaterial size for a glow of apparent world height S: with
- * sizeAttenuation the point covers size*(h/2)/dist pixels while a
- * world-space object of height S covers S*(h/2)/(dist*tan(fov/2)); at
- * fov 50 that means size ≈ S / tan(25°) ≈ S / 0.466.
- */
-function glowPointSize(extent: number): number {
-  // ≥4 m halo, growing with the network so it stays visible at the default fit.
-  const worldSize = THREE.MathUtils.clamp(extent * 0.0085, 4, 12);
-  return worldSize / 0.466;
-}
+/** Mast height in metres (a real mast-arm signal is 5.5-7 m). */
+const MAST_HEIGHT = 6.4;
+/** Height of the signal lens above the road. */
+const LENS_HEIGHT = 5.7;
+const LENS_RADIUS = 0.22;
+/** Gap between the kerb-side pole and the outermost lane edge. */
+const POLE_CLEARANCE = 1.0;
+/** How far upstream of the stop line the mast stands. */
+const POLE_SETBACK = 1.2;
+const ARM_THICKNESS = 0.15;
+const HOUSING_WIDTH = 0.34;
+const HOUSING_HEIGHT = 0.86;
+const HOUSING_DEPTH = 0.3;
 
 const STATE_COLORS: Record<HeadState, THREE.Color> = {
-  0: new THREE.Color(0x22e07c), // green
-  1: new THREE.Color(0xffcc33), // yellow
-  2: new THREE.Color(0xff4444), // red
+  0: new THREE.Color(0x2ee07f), // green
+  1: new THREE.Color(0xffc02e), // yellow
+  2: new THREE.Color(0xff3b30), // red
 };
+
+/**
+ * Halo diameter in metres. Small — it marks the lens, it is not the light.
+ * `clampPointSize` keeps the on-screen size sane at both ends of the zoom.
+ */
+function glowWorldSize(extent: number): number {
+  return THREE.MathUtils.clamp(extent * 0.0022, 1.1, 2.6);
+}
 
 function makeGlowTexture(): THREE.CanvasTexture {
   const size = 64;
@@ -67,9 +79,9 @@ function makeGlowTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext("2d");
   if (ctx) {
     const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    grad.addColorStop(0, "rgba(255,255,255,0.9)");
-    grad.addColorStop(0.25, "rgba(255,255,255,0.4)");
-    grad.addColorStop(0.55, "rgba(255,255,255,0.12)");
+    grad.addColorStop(0, "rgba(255,255,255,0.95)");
+    grad.addColorStop(0.22, "rgba(255,255,255,0.45)");
+    grad.addColorStop(0.5, "rgba(255,255,255,0.13)");
     grad.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
@@ -79,18 +91,46 @@ function makeGlowTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+/**
+ * Box with its local transform baked in, ready for merging with the kit masts
+ * — which carry position + normal only, so the UVs go.
+ */
+export function hardwareBox(
+  size: readonly [number, number, number],
+  at: readonly [number, number, number],
+  rotY: number,
+): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(size[0], size[1], size[2]);
+  geo.deleteAttribute("uv");
+  if (rotY !== 0) geo.rotateY(rotY);
+  geo.translate(at[0], at[1], at[2]);
+  return geo;
+}
+
+function mergeOrEmpty(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  if (parts.length === 0) return new THREE.BufferGeometry();
+  const merged = mergeGeometries(parts, false) ?? new THREE.BufferGeometry();
+  parts.forEach((p) => p.dispose());
+  return merged;
+}
+
 export class SignalLayer {
   readonly group: THREE.Group;
 
   private readonly heads: Head[] = [];
-  private readonly headMesh: THREE.InstancedMesh;
-  private readonly poleMesh: THREE.Mesh;
+  private readonly lensMesh: THREE.InstancedMesh;
+  private readonly lensMaterial: THREE.MeshBasicMaterial;
+  private readonly meshes: THREE.Mesh[] = [];
+  private readonly ownedMaterials: THREE.Material[] = [];
   private readonly glow: THREE.Points;
+  private readonly glowMaterial: THREE.PointsMaterial;
   private readonly glowColors: Float32Array;
   private readonly glowTexture: THREE.CanvasTexture;
   private readonly color = new THREE.Color();
+  private lensIntensity = 2.6;
+  private glowIntensity = 1;
 
-  constructor(meta: TrajMeta) {
+  constructor(meta: TrajMeta, assets: SceneAssets | null = null) {
     this.group = new THREE.Group();
     this.group.name = "signals";
 
@@ -109,11 +149,49 @@ export class SignalLayer {
       else connsByLane.set(conn.from_lane, [conn]);
     }
 
-    const positions: [number, number][] = []; // sim coords per head
+    // Per-link lane geometry: which lane is on the kerb, and how wide the link
+    // is, so the mast lands outside the traffic and the arm spans every lane.
+    const linkOfLane = new Map<number, number>();
+    /** Lane id -> lateral distance from its centre to the kerb-side pole. */
+    const toKerbOfLane = new Map<number, number>();
+    /** Link id -> arm length needed to reach the far lane. */
+    const armOfLink = new Map<number, number>();
+    for (const link of network.links) {
+      const lanes = link.lanes
+        .map((id) => laneById.get(id))
+        .filter((l): l is TrajLane => l !== undefined && l.polyline.length >= 2);
+      if (lanes.length === 0) continue;
+      const ref = lanes[0].polyline;
+      const p0 = ref[0];
+      const p1 = ref[ref.length - 1];
+      let dx = p1[0] - p0[0];
+      let dy = p1[1] - p0[1];
+      const dl = Math.hypot(dx, dy) || 1;
+      dx /= dl;
+      dy /= dl;
+      // Lateral offset of each lane, positive to the LEFT of travel.
+      const offsets = lanes.map((lane) => {
+        const mid = lane.polyline[Math.floor(lane.polyline.length / 2)];
+        return (mid[0] - p0[0]) * -dy + (mid[1] - p0[1]) * dx;
+      });
+      const minOff = Math.min(...offsets);
+      let arm = 0;
+      lanes.forEach((lane, i) => {
+        linkOfLane.set(lane.id, link.id);
+        const toKerb = offsets[i] - minOff + lane.width / 2 + POLE_CLEARANCE;
+        toKerbOfLane.set(lane.id, toKerb);
+        arm = Math.max(arm, toKerb);
+      });
+      armOfLink.set(link.id, arm);
+    }
+
+    const hardwareGeos: THREE.BufferGeometry[] = [];
+    const lensPositions: [number, number, number][] = [];
+    const mastedLinks = new Set<number>();
+
     for (const [laneId, conns] of connsByLane) {
       const lane = laneById.get(laneId);
-      if (!lane || lane.polyline.length === 0) continue;
-      const end = lane.polyline[lane.polyline.length - 1];
+      if (!lane || lane.polyline.length < 2) continue;
 
       const headConns: HeadConn[] = [];
       for (const conn of conns) {
@@ -128,56 +206,132 @@ export class SignalLayer {
       }
       if (headConns.length === 0) continue;
 
-      this.heads.push({ index: positions.length, conns: headConns, last: -1 });
-      positions.push([end[0], end[1]]);
-    }
-    const n = positions.length;
+      const pts = lane.polyline;
+      const end = pts[pts.length - 1];
+      const prev = pts[pts.length - 2];
+      let fx = end[0] - prev[0];
+      let fy = end[1] - prev[1];
+      const fl = Math.hypot(fx, fy) || 1;
+      fx /= fl;
+      fy /= fl;
+      // Sim (x, y) -> scene (x, -z): forward, and its right-hand normal.
+      const fxs = fx;
+      const fzs = -fy;
+      const rxs = -fzs;
+      const rzs = fxs;
+      // Scene heading of this approach. Rotating the kit mast by it swings the
+      // model's arm (local -Z) out over the road.
+      const heading = Math.atan2(-fzs, fxs);
 
-    // Poles: one merged static mesh.
-    const poleGeos: THREE.BufferGeometry[] = [];
-    const poleProto = new THREE.BoxGeometry(POLE_SIDE, HEAD_HEIGHT, POLE_SIDE);
-    poleProto.translate(0, HEAD_HEIGHT / 2, 0);
-    for (const [x, y] of positions) {
-      const g = poleProto.clone();
-      g.translate(x, 0, -y);
-      poleGeos.push(g);
-    }
-    const poleGeo = poleGeos.length > 0 ? mergeGeometries(poleGeos) : new THREE.BufferGeometry();
-    poleProto.dispose();
-    this.poleMesh = new THREE.Mesh(
-      poleGeo,
-      new THREE.MeshStandardMaterial({ color: 0x1c212b, roughness: 0.85, metalness: 0.2 }),
-    );
-    this.group.add(this.poleMesh);
+      // Stop-line point for this lane, in scene space.
+      const sx = end[0];
+      const sz = -end[1];
+      const toKerb = toKerbOfLane.get(laneId) ?? lane.width / 2 + POLE_CLEARANCE;
 
-    // Heads: one InstancedMesh with per-instance (super-bright) color.
-    this.headMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(HEAD_RADIUS, 14, 10),
-      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      const linkId = linkOfLane.get(laneId);
+      if (linkId !== undefined && !mastedLinks.has(linkId)) {
+        mastedLinks.add(linkId);
+        const px = sx + rxs * toKerb - fxs * POLE_SETBACK;
+        const pz = sz + rzs * toKerb - fzs * POLE_SETBACK;
+        if (assets) {
+          const mast = assets.mast.geometry.clone();
+          mast.scale(MAST_HEIGHT, MAST_HEIGHT, MAST_HEIGHT);
+          mast.rotateY(heading);
+          mast.translate(px, 0, pz);
+          hardwareGeos.push(mast);
+        } else {
+          hardwareGeos.push(hardwareBox([0.2, MAST_HEIGHT, 0.2], [px, MAST_HEIGHT / 2, pz], 0));
+        }
+        // Arm reaching from the pole across every lane of the link. Its local
+        // +X ends up along the LEFT of travel, i.e. from kerb toward the road.
+        const armLength = (armOfLink.get(linkId) ?? toKerb) + 0.3;
+        hardwareGeos.push(
+          hardwareBox(
+            [armLength, ARM_THICKNESS, ARM_THICKNESS],
+            [
+              px - rxs * (armLength / 2 - 0.15),
+              LENS_HEIGHT + HOUSING_HEIGHT * 0.72,
+              pz - rzs * (armLength / 2 - 0.15),
+            ],
+            heading + Math.PI / 2,
+          ),
+        );
+        // Vertical drop tying the arm to the mast tip.
+        hardwareGeos.push(
+          hardwareBox(
+            [ARM_THICKNESS, MAST_HEIGHT - LENS_HEIGHT, ARM_THICKNESS],
+            [px, (MAST_HEIGHT + LENS_HEIGHT) / 2, pz],
+            heading,
+          ),
+        );
+      }
+
+      // Housing hanging over this lane's stop line, set back with the mast.
+      const hx = sx - fxs * POLE_SETBACK;
+      const hz = sz - fzs * POLE_SETBACK;
+      hardwareGeos.push(
+        hardwareBox(
+          [HOUSING_DEPTH, HOUSING_HEIGHT, HOUSING_WIDTH],
+          [hx, LENS_HEIGHT + HOUSING_HEIGHT * 0.16, hz],
+          heading,
+        ),
+      );
+
+      this.heads.push({ index: lensPositions.length, conns: headConns, last: -1 });
+      // The lens sits on the face the approaching traffic sees.
+      const face = HOUSING_DEPTH / 2 + LENS_RADIUS * 0.5;
+      lensPositions.push([hx - fxs * face, LENS_HEIGHT, hz - fzs * face]);
+    }
+    const n = lensPositions.length;
+
+    // --- hardware ------------------------------------------------------------
+    // Kit masts and the procedural arms/housings share one galvanised-steel
+    // material, so the whole intersection's hardware is a single merged mesh.
+    let material = assets?.propMaterial;
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({
+        color: 0x2a2f36,
+        roughness: 0.55,
+        metalness: 0.45,
+      });
+      this.ownedMaterials.push(material);
+    }
+    const hardware = new THREE.Mesh(mergeOrEmpty(hardwareGeos), material);
+    hardware.name = "signal-hardware";
+    hardware.castShadow = true;
+    this.meshes.push(hardware);
+    this.group.add(hardware);
+
+    // --- lenses --------------------------------------------------------------
+    this.lensMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.lensMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(LENS_RADIUS, 10, 8),
+      this.lensMaterial,
       Math.max(n, 1),
     );
-    this.headMesh.frustumCulled = false;
+    this.lensMesh.name = "signal-lenses";
+    this.lensMesh.frustumCulled = false;
     const dummy = new THREE.Matrix4();
     for (let i = 0; i < n; i++) {
-      const [x, y] = positions[i];
-      dummy.makeTranslation(x, HEAD_HEIGHT, -y);
-      this.headMesh.setMatrixAt(i, dummy);
-      this.headMesh.setColorAt(i, this.color.copy(STATE_COLORS[2]).multiplyScalar(HEAD_INTENSITY));
+      const [x, y, z] = lensPositions[i];
+      dummy.makeTranslation(x, y, z);
+      this.lensMesh.setMatrixAt(i, dummy);
+      this.lensMesh.setColorAt(i, this.color.copy(STATE_COLORS[2]));
     }
-    this.headMesh.count = n;
-    this.headMesh.instanceMatrix.needsUpdate = true;
-    this.group.add(this.headMesh);
+    this.lensMesh.count = n;
+    this.lensMesh.instanceMatrix.needsUpdate = true;
+    this.group.add(this.lensMesh);
 
-    // Glow halos: one additive Points draw, billboarded for free.
+    // --- glow halos (one additive Points draw, billboarded for free) ----------
     const glowPositions = new Float32Array(n * 3);
     this.glowColors = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      glowPositions[i * 3] = positions[i][0];
-      glowPositions[i * 3 + 1] = HEAD_HEIGHT;
-      glowPositions[i * 3 + 2] = -positions[i][1];
-      this.glowColors[i * 3] = STATE_COLORS[2].r * GLOW_INTENSITY;
-      this.glowColors[i * 3 + 1] = STATE_COLORS[2].g * GLOW_INTENSITY;
-      this.glowColors[i * 3 + 2] = STATE_COLORS[2].b * GLOW_INTENSITY;
+      glowPositions[i * 3] = lensPositions[i][0];
+      glowPositions[i * 3 + 1] = lensPositions[i][1];
+      glowPositions[i * 3 + 2] = lensPositions[i][2];
+      this.glowColors[i * 3] = STATE_COLORS[2].r;
+      this.glowColors[i * 3 + 1] = STATE_COLORS[2].g;
+      this.glowColors[i * 3 + 2] = STATE_COLORS[2].b;
     }
     const glowGeo = new THREE.BufferGeometry();
     glowGeo.setAttribute("position", new THREE.BufferAttribute(glowPositions, 3));
@@ -185,21 +339,32 @@ export class SignalLayer {
     colorAttr.setUsage(THREE.DynamicDrawUsage);
     glowGeo.setAttribute("color", colorAttr);
     this.glowTexture = makeGlowTexture();
-    this.glow = new THREE.Points(
-      glowGeo,
-      new THREE.PointsMaterial({
-        size: glowPointSize(networkBounds(meta).extent),
-        sizeAttenuation: true,
-        map: this.glowTexture,
-        vertexColors: true,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
+    this.glowMaterial = new THREE.PointsMaterial({
+      // At fov 50 a point of `size` covers the pixels a world-space object of
+      // size * tan(fov/2) ≈ size * 0.466 would.
+      size: glowWorldSize(networkBounds(meta).extent) / 0.466,
+      sizeAttenuation: true,
+      map: this.glowTexture,
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    clampPointSize(this.glowMaterial, 5, 44);
+    this.glow = new THREE.Points(glowGeo, this.glowMaterial);
     this.glow.frustumCulled = false;
     this.glow.visible = n > 0;
     this.group.add(this.glow);
+  }
+
+  setTheme(spec: ThemeSpec): void {
+    this.lensIntensity = spec.lensIntensity;
+    this.glowIntensity = spec.glowIntensity;
+    for (const head of this.heads) {
+      this.writeState(head.index, STATE_COLORS[head.last === -1 ? 2 : head.last]);
+    }
+    if (this.lensMesh.instanceColor) this.lensMesh.instanceColor.needsUpdate = true;
+    (this.glow.geometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
   }
 
   /** Recolor every head from the frame's per-intersection signal records. */
@@ -222,28 +387,53 @@ export class SignalLayer {
       }
       if (state !== head.last) {
         head.last = state;
-        const tint = STATE_COLORS[state];
-        this.headMesh.setColorAt(head.index, this.color.copy(tint).multiplyScalar(HEAD_INTENSITY));
-        this.glowColors[head.index * 3] = tint.r * GLOW_INTENSITY;
-        this.glowColors[head.index * 3 + 1] = tint.g * GLOW_INTENSITY;
-        this.glowColors[head.index * 3 + 2] = tint.b * GLOW_INTENSITY;
+        this.writeState(head.index, STATE_COLORS[state]);
         dirty = true;
       }
     }
     if (dirty) {
-      if (this.headMesh.instanceColor) this.headMesh.instanceColor.needsUpdate = true;
+      if (this.lensMesh.instanceColor) this.lensMesh.instanceColor.needsUpdate = true;
       (this.glow.geometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
     }
   }
 
+  private writeState(index: number, tint: THREE.Color): void {
+    this.lensMesh.setColorAt(index, this.color.copy(tint).multiplyScalar(this.lensIntensity));
+    this.glowColors[index * 3] = tint.r * this.glowIntensity;
+    this.glowColors[index * 3 + 1] = tint.g * this.glowIntensity;
+    this.glowColors[index * 3 + 2] = tint.b * this.glowIntensity;
+  }
+
   dispose(): void {
-    this.poleMesh.geometry.dispose();
-    (this.poleMesh.material as THREE.Material).dispose();
-    this.headMesh.geometry.dispose();
-    (this.headMesh.material as THREE.Material).dispose();
-    this.headMesh.dispose();
+    for (const mesh of this.meshes) mesh.geometry.dispose();
+    this.ownedMaterials.forEach((m) => m.dispose());
+    this.lensMesh.geometry.dispose();
+    this.lensMaterial.dispose();
+    this.lensMesh.dispose();
     this.glow.geometry.dispose();
-    (this.glow.material as THREE.Material).dispose();
+    this.glowMaterial.dispose();
     this.glowTexture.dispose();
   }
+}
+
+/**
+ * Keep an attenuated Points sprite inside a pixel range. Without this a
+ * world-sized halo is a couple of pixels across at overview zoom and a
+ * screen-filling blob in a follow closeup — the exact complaint about the old
+ * signal heads.
+ */
+export function clampPointSize(
+  material: THREE.PointsMaterial,
+  minPx: number,
+  maxPx: number,
+): void {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      "gl_PointSize *= ( scale / - mvPosition.z );",
+      `gl_PointSize = clamp( gl_PointSize * ( scale / - mvPosition.z ), ${minPx.toFixed(
+        1,
+      )}, ${maxPx.toFixed(1)} );`,
+    );
+  };
+  material.customProgramCacheKey = () => `trafficlab-glow-${minPx}-${maxPx}`;
 }

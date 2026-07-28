@@ -8,12 +8,16 @@ WebGL visualizer for trafficlab `.traj` replay files (Next.js + TypeScript + thr
 npm install
 npm run dev -- -p 3199   # http://localhost:3199 (project convention; the headless
                          # scripts below default to this port)
-npm test                 # vitest: 95 specs — parser, metrics scan, series/ramps,
-                         # playback, camera math, mean-wait stats, car geometry +
-                         # instance picking, scenery scatter
+npm test                 # vitest: 105 specs — parser, metrics scan, series/ramps,
+                         # playback, camera math, mean-wait stats, vehicle model
+                         # mix + instance picking, scenery scatter
 npm run lint             # eslint
 npm run build            # production build
 ```
+
+`public/assets/` (models, textures, HDRIs) is committed and served as-is. It is
+regenerated from the full CC0 kits in `assets_src/` — which are **not** shipped —
+by `node scripts/prepare_assets.mjs`; see [Art assets](#art-assets).
 
 Open the page, then drag-and-drop a `.traj` file anywhere on the window or click one of the
 two demo buttons (`public/fixtures/synthetic.traj`, `public/fixtures/grid2x2_demo.traj`).
@@ -33,12 +37,24 @@ Once a file is loaded the top toolbar exposes **Load…**, **Compare…** (or **
 - **Cameras** — Orbit (`1`), Top-down (`2`, orthographic fitted to the network, rotation
   locked, pan + zoom only), and Follow: click a vehicle to chase it (smoothed target,
   orbit offset preserved while following, highlight ring). `Esc` or despawn exits.
-- **Scene** — vehicles are a ~176-triangle low-poly car (tapered body, raked glasshouse,
-  darkened rocker, four wheels) drawn as one InstancedMesh; window glass, tyres and the
-  roof highlight are baked into a vertex-colour *multiplier* so they survive per-instance
-  body colouring without a second material. Instanced low-poly street trees and building
-  masses fill the blocks between roads, placed by a seeded scatter (see `scatter.ts`) that
-  rejects anything within 14 m of a lane or intersection — two extra static draw calls.
+- **Scene** — real CC0 art throughout (Kenney kits + Poly Haven PBR maps and HDRIs).
+  Ten vehicle models, each merged to one geometry and drawn as one InstancedMesh, so a
+  1500-car frame is ten draw calls; vehicle ids hash deterministically into a weighted
+  fleet mix (mostly sedans/hatchbacks/SUVs, a few vans, taxis, trucks and one police car
+  in thirty) so a car keeps its bodywork across seeks and matches on both sides of a
+  comparison. The road ribbons stay procedural — they follow arbitrary lane polylines —
+  but carry arc-length UVs for a tiling asphalt PBR set, with a gravel verge under the
+  edges and the painted markings on top. Kenney trees and commercial buildings fill the
+  blocks, placed by a seeded scatter (`scatter.ts`) that walks each street frontage at a
+  setback and rejects anything within 14 m (trees) / 22 m (buildings) of a lane. Signals
+  are mast-arm assemblies: a roads-kit pole on the kerb, a slim arm across the approach,
+  a housing over each lane, and a 0.22 m emissive lens with a pixel-clamped halo.
+- **Day / night** — the side panel's Lighting toggle (default Day) swaps the HDRI used as
+  both sky and image-based light, the key light (warm sun / cool moon), exposure, fog,
+  ground and asphalt albedo, and the street lamps, which only light up at night. One
+  2048 directional shadow map follows the camera target with a frustum sized by how far
+  away the camera is, so a follow closeup gets tight shadows and an overview still covers
+  the network.
 - **Mean wait** — a stat chip reads `cumulative_delay / (throughput + active_vehicles)` at
   the playhead, with its change over the trailing 60 s of sim time (green falling, red
   rising). In compare mode each side gets a chip plus a `B vs A` percentage chip on the
@@ -92,6 +108,15 @@ node scripts/follow_probe.mjs [base]
 node scripts/closeups.mjs [outDir=../results/gifs] [base]
 # review stills: follow-cam closeup of the car model in the scenery, and the
 # mean-wait HUD in single + compare mode
+
+node scripts/photoreal_shots.mjs [outDir] [fixture=stress.traj] [base]
+node scripts/photoreal_shots.mjs --final    # -> ../results/gifs/photoreal_*.png
+# look review + perf gate: three reproducible framings (overview / mid /
+# follow closeup) in BOTH themes, plus FPS with every overlay on, draw calls,
+# triangles and asset load time. Runs the browser with vsync off, so its FPS
+# number is real headroom rather than the 60 Hz ceiling visual_check reports.
+# Exits non-zero if either theme drops below 55 fps or over 120 draw calls, or
+# the asset bundle takes more than 3 s.
 ```
 
 `follow_probe.mjs` and `closeups.mjs` read live state through `window.trafficlabViz`
@@ -113,15 +138,23 @@ shell — three.js objects never enter React state.
   extraction, min-max downsampling for the charts, phase-strip segmentation, time
   formatting, the color ramps used by overlays, and the mean-wait / trailing-trend math
   behind the HUD chips. Fully unit tested.
-- `src/lib/scene/` — three.js layers that know nothing about React: `buildRoads` (static
-  geometry), `carModel` (the shared low-poly car BufferGeometry), `VehicleLayer` (one
-  InstancedMesh for all cars, id- or speed-based instance colors, pose queries for
-  picking/following with persistent id→index maps, and an instance bounding sphere kept
-  in step with the instances so raycast picking keeps working), `scatter` + `environment`
-  (seeded scenery placement and its two instanced meshes), `SignalLayer`, and `overlays/`
-  (queue heatmap, phase timers, pressure discs, trajectory ribbons, shared canvas-texture
-  text sprites). Overlays skip all work while hidden and reuse scratch objects — no
-  per-frame allocations in hot loops.
+- `src/lib/scene/` — three.js layers that know nothing about React: `assets` (loads the
+  art bundle once per page and merges each model to one instancing-ready geometry),
+  `theme` (the two lighting looks as data), `RoadLayer` (static geometry + per-theme
+  materials), `carModel` (the procedural fallback car), `VehicleLayer` (one InstancedMesh
+  per model type, the id→model hash, blended speed coloring, pose queries for
+  picking/following with persistent id→index maps, and instance bounding spheres kept in
+  step with the instances so raycast picking keeps working), `scatter` +
+  `EnvironmentLayer` (seeded scenery placement and its instanced meshes), `SignalLayer`,
+  `StreetLampLayer`, and `overlays/` (queue heatmap, phase timers, pressure discs,
+  trajectory ribbons, and `LabelBatch` — every in-scene text label as one atlas-backed
+  draw call, because a sprite per label costs more than the rest of the scene put
+  together). Overlays skip all work while hidden and reuse scratch objects — no per-frame
+  allocations in hot loops.
+
+  Every layer takes the asset bundle as an optional argument and falls back to the
+  procedural geometry it replaced when it is absent, so the unit tests (and a failed
+  asset fetch) still get a working scene.
 - `src/lib/viz/` — the runtime: `PlaybackClock` (time-based shared clock; comparison
   files with different lengths/dt stay in sync), `CameraRig` (orbit/top-down/follow, one
   pose applied to every viewport), `SceneView` (one loaded replay: scene + layers +
@@ -138,3 +171,31 @@ shell — three.js objects never enter React state.
 Sim coordinates (X east, Y north) map to the scene as (x, -z); headings rotate about +Y.
 three.js stays client-only via a `dynamic(..., { ssr: false })` import in a client
 component.
+
+## Art assets
+
+Everything the scene draws with is CC0 — see `public/assets/LICENSES.md`:
+
+| source | pack | used for |
+|---|---|---|
+| kenney.nl | Car Kit | 10 vehicle models |
+| kenney.nl | Nature Kit | 5 trees + 1 bush |
+| kenney.nl | City Kit Commercial | 8 buildings |
+| kenney.nl | City Kit Roads | signal mast + street lamp |
+| polyhaven.com | aerial_asphalt_01 | road PBR maps |
+| polyhaven.com | aerial_grass_rock | ground PBR maps |
+| polyhaven.com | kloofendal_48d_partly_cloudy_puresky | day HDRI |
+| polyhaven.com | satara_night | night HDRI |
+
+The full kits (400+ GLBs, 2k maps, 2k HDRIs — ~90 MB) live in `assets_src/`, which is a
+staging area and is never served. `node scripts/prepare_assets.mjs` copies the selected
+models into `public/assets/`, downsamples the maps to 1k JPEG and the HDRIs to 1k
+Radiance, and applies two bake-time recolours: the "grass" scan is a dry savanna
+(mean RGB 114, 97, 37) so it gets a hue rotation into actual green, and Kenney's car
+palette is saturated toy primaries so it gets pulled most of the way to neutral. The
+result is **~5.5 MB transferred, ~200 ms to fetch and decode on localhost.**
+
+Budget on the reference machine (RTX 4060 laptop, 1600x900, `stress.traj` — 1562
+vehicles, grid4x4) with every overlay on: **68 draw calls day / 69 night, 6.4 M triangles
+including the shadow pass, 60 fps vsync-capped (~200 fps uncapped).** The static scene on
+its own is ~50 draw calls.

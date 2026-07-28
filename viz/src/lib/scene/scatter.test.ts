@@ -26,7 +26,6 @@ function gridNetwork(name: string, blocks: number, spacing: number): TrajMeta {
       link: 0,
       index: 0,
       width: 3.5,
-      length: span,
       speed_limit: 13.9,
       polyline: [
         [0, y],
@@ -40,7 +39,6 @@ function gridNetwork(name: string, blocks: number, spacing: number): TrajMeta {
       link: 0,
       index: 0,
       width: 3.5,
-      length: span,
       speed_limit: 13.9,
       polyline: [
         [x, 0],
@@ -118,8 +116,33 @@ describe("scatterEnvironment", () => {
 
   it("keeps every building pad well clear of the roads", () => {
     const { pads } = scatterEnvironment(grid, { padClearance: 34 });
+    expect(pads.length).toBeGreaterThan(4);
     for (const p of pads) {
       expect(distanceToLanes(grid, p.x, p.y)).toBeGreaterThanOrEqual(34 - 1e-6);
+    }
+  });
+
+  it("lines buildings up along the street frontages", () => {
+    // Regression for the "towers dropped in a field" look: pads are placed by
+    // walking each lane at a setback, so none may drift into open country.
+    const { pads } = scatterEnvironment(grid, { padClearance: 30 });
+    expect(pads.length).toBeGreaterThan(8);
+    for (const p of pads) {
+      // setback = padClearance + up to 14 m of jitter.
+      expect(distanceToLanes(grid, p.x, p.y)).toBeLessThanOrEqual(30 + 14 + 1e-6);
+    }
+  });
+
+  it("does not let two building footprints overlap", () => {
+    const { pads } = scatterEnvironment(grid);
+    for (let i = 0; i < pads.length; i++) {
+      for (let j = i + 1; j < pads.length; j++) {
+        const gap =
+          Math.max(pads[i].width, pads[i].depth) / 2 + Math.max(pads[j].width, pads[j].depth) / 2;
+        const apart =
+          Math.abs(pads[i].x - pads[j].x) > gap || Math.abs(pads[i].y - pads[j].y) > gap;
+        expect(apart).toBe(true);
+      }
     }
   });
 
@@ -127,6 +150,16 @@ describe("scatterEnvironment", () => {
     const { trees, pads } = scatterEnvironment(grid, { maxTrees: 25, maxPads: 4 });
     expect(trees.length).toBeLessThanOrEqual(25);
     expect(pads.length).toBeLessThanOrEqual(4);
+  });
+
+  it("scales the building count with how much street there is to line", () => {
+    // A single-intersection network should get a handful of buildings, not the
+    // same crowd as a 4x4 grid.
+    const small = scatterEnvironment(gridNetwork("tiny", 2, 120));
+    const big = scatterEnvironment(gridNetwork("grid4x4", 5, 260));
+    expect(small.pads.length).toBeLessThan(big.pads.length);
+    expect(big.pads.length).toBeLessThanOrEqual(40);
+    expect(small.pads.length).toBeGreaterThanOrEqual(4);
   });
 
   it("gives trees a plausible size and a hue tint", () => {

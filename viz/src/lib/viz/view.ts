@@ -3,15 +3,22 @@ import * as THREE from "three";
 import {
   buildEnvironment,
   buildRoads,
-  disposeGroup,
+  groundPlaneSize,
+  HorizonHaze,
   networkBounds,
   PhaseTimerLayer,
   PressureLayer,
   QueueHeatmapLayer,
   RibbonLayer,
   SignalLayer,
+  StreetLampLayer,
+  THEMES,
   VehicleLayer,
+  type EnvironmentLayer,
   type NetworkBounds,
+  type RoadLayer,
+  type SceneAssets,
+  type Theme,
   type VehiclePose,
 } from "../scene";
 import { seriesMax, seriesMaxAbs } from "../series";
@@ -37,10 +44,22 @@ export const DEFAULT_TOGGLES: OverlayToggles = {
   pressure: false,
 };
 
+/** Shadow-map resolution for the single directional light. */
+const SHADOW_MAP = 2048;
+/** Half-width of the shadow frustum, as a fraction of the camera's reach. */
+const SHADOW_SPAN = 0.62;
+const SHADOW_MIN = 55;
+const SHADOW_MAX = 340;
+
 /**
  * One loaded replay and everything needed to draw it: its own THREE.Scene,
- * static roads, vehicle/signal layers, and all overlay layers. Knows nothing
- * about React, the renderer, or the other side of a comparison.
+ * static roads/scenery, vehicle/signal layers, and all overlay layers. Knows
+ * nothing about React, the renderer, or the other side of a comparison.
+ *
+ * Lighting is a single key light (sun or moon) plus image-based lighting from
+ * the theme's HDRI, with one 2048 shadow map whose frustum is retargeted every
+ * frame around whatever the camera is looking at — a fixed frustum big enough
+ * for a grid4x4 would put a whole car inside one shadow texel.
  */
 export class SceneView {
   readonly traj: TrajFile;
@@ -56,8 +75,9 @@ export class SceneView {
   /** Columns backing the mean-wait HUD. */
   readonly waitCols: WaitColumns;
 
-  private readonly roads: THREE.Group;
-  private readonly environment: THREE.Group;
+  private readonly roads: RoadLayer;
+  private readonly environment: EnvironmentLayer;
+  private readonly lamps: StreetLampLayer;
   private readonly signals: SignalLayer;
   private readonly queueHeat: QueueHeatmapLayer;
   private readonly phaseTimers: PhaseTimerLayer;
@@ -69,7 +89,15 @@ export class SceneView {
   private readonly getFrame: (i: number) => TrajFrame;
   private lastSignalFrame = -1;
 
-  constructor(traj: TrajFile) {
+  private readonly key: THREE.DirectionalLight;
+  private readonly fill: THREE.HemisphereLight;
+  private readonly fog: THREE.Fog;
+  private readonly haze: HorizonHaze;
+  private readonly diagonal: number;
+  private theme: Theme = "day";
+  private shadowSpan = 0;
+
+  constructor(traj: TrajFile, assets: SceneAssets | null = null, theme: Theme = "day") {
     this.traj = traj;
     this.scan = traj.scanMeta();
     this.bounds = networkBounds(traj.meta);
@@ -81,26 +109,34 @@ export class SceneView {
     this.waitCols = waitColumns(traj.meta.metrics);
 
     this.scene = new THREE.Scene();
-    // Very dark desaturated blue night sky with matching linear fog whose far
-    // plane sits ~3x the network diagonal out.
-    const sky = new THREE.Color(0x0b0e14);
-    const diagonal = Math.max(
+    this.diagonal = Math.max(
       Math.hypot(this.bounds.maxX - this.bounds.minX, this.bounds.maxY - this.bounds.minY),
       300,
     );
-    this.scene.background = sky;
-    this.scene.fog = new THREE.Fog(sky, diagonal * 1.5, diagonal * 3);
-    // Cool sky dome + warm ground bounce, and one warm key light at ~45°.
-    this.scene.add(new THREE.HemisphereLight(0x93aad4, 0x30291f, 1.25));
-    const sun = new THREE.DirectionalLight(0xffe7c4, 2.5);
-    sun.position.set(0.7, 0.85, 0.45).multiplyScalar(400);
-    this.scene.add(sun);
+    this.fog = new THREE.Fog(0xffffff, this.diagonal, this.diagonal * 3);
+    this.scene.fog = this.fog;
 
-    this.roads = buildRoads(traj.meta);
-    this.environment = buildEnvironment(traj.meta);
-    this.vehicles = new VehicleLayer();
+    this.fill = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.3);
+    this.scene.add(this.fill);
+
+    this.key = new THREE.DirectionalLight(0xffffff, 1);
+    this.key.castShadow = true;
+    this.key.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    this.key.shadow.camera.near = 1;
+    this.key.shadow.camera.far = 900;
+    this.key.shadow.normalBias = 0.05;
+    this.scene.add(this.key, this.key.target);
+
+    // Outside the ground plane, so the plane's edge is hidden behind the band
+    // rather than cutting a line across the horizon.
+    this.haze = new HorizonHaze(groundPlaneSize(this.bounds) * 0.62);
+
+    this.roads = buildRoads(traj.meta, assets);
+    this.environment = buildEnvironment(traj.meta, assets);
+    this.lamps = new StreetLampLayer(traj.meta, assets);
+    this.vehicles = new VehicleLayer(assets);
     this.vehicles.setNetwork(traj.meta);
-    this.signals = new SignalLayer(traj.meta);
+    this.signals = new SignalLayer(traj.meta, assets);
     this.queueHeat = new QueueHeatmapLayer(traj.meta);
     this.queueHeat.setScale(seriesMax(this.scan.queues));
     this.phaseTimers = new PhaseTimerLayer(traj.meta);
@@ -121,9 +157,11 @@ export class SceneView {
     this.highlight.visible = false;
 
     this.scene.add(
-      this.roads,
-      this.environment,
-      this.vehicles.mesh,
+      this.haze.mesh,
+      this.roads.group,
+      this.environment.group,
+      this.lamps.group,
+      this.vehicles.group,
       this.signals.group,
       this.queueHeat.group,
       this.phaseTimers.group,
@@ -131,6 +169,75 @@ export class SceneView {
       this.ribbons.line,
       this.highlight,
     );
+
+    this.setTheme(theme, null, null);
+    this.setShadowFocus(this.bounds.centerX, -this.bounds.centerY, this.bounds.extent);
+  }
+
+  /**
+   * Apply a lighting look. `background` is the raw equirect HDRI and
+   * `environment` its prefiltered radiance map — both come from the engine,
+   * which owns the renderer PMREM needs. Passing null keeps the flat fallback.
+   */
+  setTheme(theme: Theme, background: THREE.Texture | null, environment: THREE.Texture | null): void {
+    this.theme = theme;
+    const spec = THEMES[theme];
+
+    this.scene.background = background ?? new THREE.Color(spec.skyColor);
+    this.scene.environment = environment;
+    this.scene.environmentIntensity = spec.envIntensity;
+    this.scene.backgroundIntensity = spec.backgroundIntensity;
+
+    this.fog.color.setHex(spec.fogColor);
+    this.fog.near = this.diagonal * spec.fogNear;
+    this.fog.far = this.diagonal * spec.fogFar;
+
+    this.fill.color.setHex(spec.skyFill);
+    this.fill.groundColor.setHex(spec.groundFill);
+    this.fill.intensity = spec.fillIntensity;
+
+    this.key.color.setHex(spec.keyColor);
+    this.key.intensity = spec.keyIntensity;
+    this.key.shadow.bias = spec.shadowBias;
+
+    this.haze.setTheme(spec);
+    this.roads.setTheme(spec);
+    this.environment.setTheme(spec);
+    this.lamps.setTheme(spec);
+    this.signals.setTheme(spec);
+  }
+
+  /**
+   * Point the shadow frustum at what the camera is looking at. `reach` is the
+   * camera's distance to its target, which sets how much ground needs crisp
+   * shadows: a follow closeup gets ~55 m of tight shadow, an overview widens
+   * out until the whole network is covered (coarsely, which is all it needs).
+   */
+  setShadowFocus(x: number, z: number, reach: number): void {
+    const span = THREE.MathUtils.clamp(reach * SHADOW_SPAN, SHADOW_MIN, SHADOW_MAX);
+    const dir = THEMES[this.theme].keyDirection;
+    // Snap the focus to shadow-texel steps so a moving camera does not make the
+    // shadow edges crawl.
+    const step = (2 * span) / SHADOW_MAP;
+    const fx = Math.round(x / step) * step;
+    const fz = Math.round(z / step) * step;
+    this.key.target.position.set(fx, 0, fz);
+    this.key.position.set(fx + dir[0] * 320, dir[1] * 320, fz + dir[2] * 320);
+    this.key.target.updateMatrixWorld();
+    if (span !== this.shadowSpan) {
+      this.shadowSpan = span;
+      const camera = this.key.shadow.camera;
+      camera.left = -span;
+      camera.right = span;
+      camera.top = span;
+      camera.bottom = -span;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  /** Turn vehicle shadow casting on/off (the first thing to drop under load). */
+  setVehicleShadows(cast: boolean): void {
+    this.vehicles.setShadows(cast);
   }
 
   applyToggles(t: OverlayToggles): void {
@@ -167,7 +274,7 @@ export class SceneView {
       this.signals.update(frameA);
       this.lastSignalFrame = fa;
     }
-    this.queueHeat.update(frameA, frameB, t);
+    this.queueHeat.update(frameA, frameB, t, wallMs);
     this.phaseTimers.update(frameA, t * traj.meta.dt, wallMs);
     this.pressure.update(frameA, frameB, t, wallSeconds);
     this.ribbons.advanceTo(fa, this.getFrame, selectedId);
@@ -202,8 +309,10 @@ export class SceneView {
   }
 
   dispose(): void {
-    disposeGroup(this.roads);
-    disposeGroup(this.environment);
+    this.haze.dispose();
+    this.roads.dispose();
+    this.environment.dispose();
+    this.lamps.dispose();
     this.vehicles.dispose();
     this.signals.dispose();
     this.queueHeat.dispose();

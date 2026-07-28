@@ -1,27 +1,24 @@
 import * as THREE from "three";
 import type { TrajFrame, TrajMeta } from "../../traj";
 import { networkBounds } from "../roads";
-import { TextSprite } from "./textSprite";
+import { LabelBatch } from "./labelBatch";
 
 /**
  * One billboard per intersection showing the current phase name and seconds
- * in phase. Canvas text redraws are throttled to at most 4 Hz.
+ * in phase. All of them share a single batched label atlas (one draw call),
+ * and canvas text redraws are throttled to at most 4 Hz.
  */
 
 const UPDATE_INTERVAL_MS = 250;
 const STATE_COLORS = ["#59d98a", "#f0cb56", "#f07a72"]; // green / yellow / all-red
 const STATE_SUFFIX = ["", " · Y", " · R"];
 
-interface Timer {
-  label: TextSprite;
-  /** Phase names of the intersection at this order slot. */
-  phaseNames: string[];
-}
-
 export class PhaseTimerLayer {
   readonly group: THREE.Group;
 
-  private readonly timers: Timer[] = [];
+  private readonly labels: LabelBatch;
+  /** Phase names of the intersection at each order slot. */
+  private readonly phaseNames: string[][] = [];
   private lastDraw = 0;
 
   constructor(meta: TrajMeta) {
@@ -34,24 +31,23 @@ export class PhaseTimerLayer {
     const worldWidth = THREE.MathUtils.clamp(extent * 0.062, 22, 64);
     const height = THREE.MathUtils.clamp(extent * 0.03, 14, 30);
 
+    this.labels = new LabelBatch({
+      count: Math.max(meta.intersections_order.length, 1),
+      cellWidth: 256,
+      cellHeight: 58,
+      worldWidth,
+      font: "600 34px ui-sans-serif, system-ui, sans-serif",
+    });
+
     const nodeById = new Map(meta.network.nodes.map((n) => [n.id, n]));
     const intersectionById = new Map(meta.network.intersections.map((i) => [i.id, i]));
-    for (const id of meta.intersections_order) {
+    meta.intersections_order.forEach((id, k) => {
       const intersection = intersectionById.get(id);
       const node = intersection ? nodeById.get(intersection.node) : undefined;
-      const label = new TextSprite({
-        worldWidth,
-        width: 320,
-        height: 72,
-        font: "600 40px ui-sans-serif, system-ui, sans-serif",
-      });
-      if (node) label.sprite.position.set(node.x, height, -node.y);
-      this.group.add(label.sprite);
-      this.timers.push({
-        label,
-        phaseNames: intersection ? intersection.phases.map((p) => p.name) : [],
-      });
-    }
+      if (node) this.labels.setPosition(k, node.x, height, -node.y);
+      this.phaseNames.push(intersection ? intersection.phases.map((p) => p.name) : []);
+    });
+    this.group.add(this.labels.mesh);
   }
 
   setVisible(visible: boolean): void {
@@ -68,21 +64,22 @@ export class PhaseTimerLayer {
     if (nowMs - this.lastDraw < UPDATE_INTERVAL_MS) return;
     this.lastDraw = nowMs;
 
-    const n = Math.min(this.timers.length, frame.signals.length);
+    const n = Math.min(this.phaseNames.length, frame.signals.length);
     for (let k = 0; k < n; k++) {
-      const timer = this.timers[k];
       const sig = frame.signals[k];
-      const name = timer.phaseNames[sig.phase] ?? `P${sig.phase}`;
+      const name = this.phaseNames[k][sig.phase] ?? `P${sig.phase}`;
       const state = sig.state === 1 || sig.state === 2 ? sig.state : 0;
       const seconds = sig.timeInPhase + subFrameSeconds;
-      timer.label.setText(
+      this.labels.setText(
+        k,
         `${name}${STATE_SUFFIX[state]}  ${seconds.toFixed(1)}s`,
         STATE_COLORS[state],
       );
     }
+    this.labels.flush(nowMs);
   }
 
   dispose(): void {
-    for (const t of this.timers) t.label.dispose();
+    this.labels.dispose();
   }
 }
