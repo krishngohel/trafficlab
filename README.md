@@ -60,7 +60,9 @@ phases, queues, rewards, and metrics.
 
 ## Results
 
-Final evaluation: 1-hour episodes, 10 seeds per cell, 95% t-CIs, frozen engine.
+Final evaluation: 1-hour episodes, 10 seeds per cell, 95% t-CIs, measured on the
+engine as shipped (every number below was regenerated after the lane-change
+overlap fix described in finding 5, which moves results by 1–2%).
 Full tables: [`results/TABLES.md`](results/TABLES.md) · plots: `results/plots/` ·
 methodology and the full sweep→analyze→adjust history (6 iterations):
 [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md).
@@ -69,40 +71,47 @@ methodology and the full sweep→analyze→adjust history (6 iterations):
 
 | policy | delay (s/veh) | throughput |
 |---|---|---|
-| actuated | **111.7 ± 6.8** | 1954 ± 26 |
-| **dqn-pressure (s0)** | **112.5 ± 7.2** | 1956 ± 27 |
-| dqn-queue (s0) | 126.2 ± 3.0 | 1953 ± 30 |
-| webster | 143.5 ± 7.8 | 1953 ± 30 |
-| max-pressure | 145.7 ± 11.3 | 1944 ± 42 |
-| fixed | 173.2 ± 12.9 | 1936 ± 30 |
+| **actuated** | **111.1 ± 7.6** | 1941 ± 32 |
+| dqn-pressure (s0) | 118.5 ± 4.3 | 1922 ± 46 |
+| dqn-queue (s0) | 126.2 ± 6.1 | 1927 ± 28 |
+| webster | 143.0 ± 6.5 | 1934 ± 28 |
+| max-pressure | 147.9 ± 8.3 | 1974 ± 27 |
+| fixed | 171.2 ± 10.8 | 1928 ± 26 |
 
 **2×2 grid, rush demand:**
 
 | policy | delay (s/veh) | throughput |
 |---|---|---|
-| actuated | **189.3 ± 7.2** | 3884 ± 40 |
-| **ippo-queue (s0)** | **227.9 ± 9.7** | 3798 ± 31 |
-| fixed | 247.4 ± 10.7 | 3827 ± 25 |
-| gat-queue (s1) | 257.1 ± 12.6 | 3816 ± 26 |
-| dqn-queue (s0) | 266.6 ± 11.2 | 3613 ± 44 |
+| **actuated** | **191.4 ± 8.3** | 3900 ± 49 |
+| webster | 207.9 ± 6.4 | 3855 ± 35 |
+| ippo-queue (s0) | 244.1 ± 9.8 | 3771 ± 27 |
+| max-pressure | 244.4 ± 6.9 | 3846 ± 37 |
+| fixed | 247.4 ± 9.4 | 3821 ± 28 |
+| gat-queue (s1) | 269.0 ± 6.8 | 3821 ± 27 |
+| dqn-queue (s0) | 274.9 ± 11.9 | 3577 ± 88 |
 
 ![Fixed-time vs learned IPPO on the 2x2 grid](results/gifs/compare_grid_rush.gif)
 
 ### Findings
 
-1. **Learned control matches the strongest classical controller at an isolated
-   intersection** — DQN statistically ties fully-actuated control (112.5 vs
-   111.7 s/veh, overlapping CIs) and beats fixed-time by 35%, Webster by 22%,
-   and max-pressure by 23%. It also transfers: trained on rush, the dqn-queue
-   policy handles light demand at baseline level (33.2 vs fixed 32.4 s/veh).
-2. **On the grid, learned coordination beats fixed-time but not actuated** —
-   IPPO's shared policy wins the RL bracket (−8% vs fixed) while actuated
-   keeps a clear lead. Notably the algorithm ranking *flips* between eval
-   horizons: DQN dominated 20-minute training evals but degraded on 1-hour
-   episodes (266.6 vs fixed 247.4), while on-policy IPPO generalized —
-   train/eval horizon mismatch measurably punishes the off-policy method.
-   GAT-PPO learns (−12% vs its no-op floor) but was still improving at budget
-   exhaustion; it needs a longer run to be judged fairly.
+1. **At an isolated intersection, learned control gets close to the strongest
+   classical controller but does not beat it.** DQN reaches 118.5 s/veh
+   against fully-actuated's 111.1 — the 95% intervals barely overlap, so this
+   is at best a tie and more honestly a small loss. It is a decisive win over
+   every *fixed* schedule: 31% better than fixed-time, 17% better than Webster,
+   20% better than max-pressure. The pattern is consistent across three
+   independent training campaigns (see `docs/EXPERIMENT_LOG.md`): actuated
+   control is a genuinely strong baseline at a single junction, because
+   responding to a presence detector is most of what there is to do.
+2. **On the 2×2 grid, none of the learned policies beat the classical
+   controllers.** IPPO is the best of them at 244.1 s/veh, which ties
+   fixed-time (247.4) and max-pressure (244.4) and loses clearly to Webster
+   (207.9) and actuated (191.4). DQN and GAT-PPO are worse than fixed. So the
+   multi-agent coordination result is negative at this budget — the honest
+   reading is that 60–150k steps on a 4-agent network is not enough, not that
+   the architectures fail. Note also that DQN dominated the short training
+   evals and then degraded on 1-hour episodes, so train/eval horizon mismatch
+   flatters off-policy methods during development.
 3. **Naive max-pressure can gridlock a real geometry.** With single-lane
    approaches, one lead left-turner head-of-line-blocks the whole lane; queue
    pressure stays pinned, the argmax never leaves the phase, and the arterial
@@ -116,6 +125,15 @@ methodology and the full sweep→analyze→adjust history (6 iterations):
    decisions; ~50× more PPO updates than the textbook rollout size gives;
    10 s decision intervals so min-green masking never forces actions. Before
    those fixes, every configuration collapsed to "hold one phase forever."
+5. **The test horizon was hiding a real bug.** The MOBIL lane-change gap check
+   compared positions but not closing speed, so a car at 12 m/s could accept a
+   4.7 m gap ahead of a stopped queue and then physically pass through the car
+   in front. The no-overlap property test ran 360 ticks; the bug first fires
+   around tick 1193, so it survived every review. It is now fixed and pinned by
+   a long-horizon regression test — zero overlaps across 38,400 ticks of the
+   four shipped networks. Every number above was regenerated afterwards. The
+   general lesson is that an invariant is only tested over the horizon you
+   actually simulate, and rare dynamics need long runs, not more assertions.
 
 ## Quick start
 

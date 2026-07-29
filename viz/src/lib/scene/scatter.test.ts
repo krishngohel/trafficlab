@@ -112,6 +112,53 @@ function gridNetwork(
   } as unknown as TrajMeta;
 }
 
+/**
+ * Bolt off-street parking onto a grid network the way the simulator does: every
+ * street link is split at driveway points by an uncontrolled "junction" node,
+ * and a short perpendicular single-lane driveway runs from there to a "parking"
+ * node. Driveways sit MID-BLOCK and run across the street's axis, which is
+ * exactly what fooled the planner into treating them as streets.
+ */
+function withParking(meta: TrajMeta, spacing: number): TrajMeta {
+  const net = meta.network as unknown as {
+    nodes: { id: number; x: number; y: number; type: string }[];
+    links: { id: number; from_node: number; to_node: number; lanes: number[] }[];
+    lanes: { id: number; link: number; index: number; width: number; speed_limit: number; polyline: number[][] }[];
+  };
+  let nodeId = Math.max(...net.nodes.map((n) => n.id)) + 1;
+  let linkId = Math.max(...net.links.map((l) => l.id)) + 1;
+  let laneId = Math.max(...net.lanes.map((l) => l.id)) + 1;
+
+  // One driveway per street centreline crossing, offset to mid-block.
+  const coords: number[] = [];
+  for (const n of net.nodes) if (!coords.includes(n.x)) coords.push(n.x);
+  coords.sort((a, b) => a - b);
+
+  for (const cx of coords) {
+    for (let i = 0; i + 1 < coords.length; i++) {
+      const my = (coords[i] + coords[i + 1]) / 2;      // mid-block along y
+      const junction = nodeId++;
+      const parking = nodeId++;
+      net.nodes.push({ id: junction, x: cx, y: my, type: "junction" });
+      net.nodes.push({ id: parking, x: cx + 14 + spacing * 0.02, y: my, type: "parking" });
+      const lane = laneId++;
+      net.lanes.push({
+        id: lane,
+        link: linkId,
+        index: 0,
+        width: 3.5,
+        speed_limit: 5.6,
+        polyline: [
+          [cx + 8, my],
+          [cx + 8 + 14, my],
+        ],
+      });
+      net.links.push({ id: linkId++, from_node: junction, to_node: parking, lanes: [lane] });
+    }
+  }
+  return meta;
+}
+
 /** Distance from a point to the nearest lane polyline. */
 function distanceToLanes(meta: TrajMeta, x: number, y: number): number {
   let best = Infinity;
@@ -294,6 +341,65 @@ describe("planCity", () => {
     for (const b of plan.buildings) {
       expect(distanceToLanes(grid, b.x, b.y)).toBeGreaterThan(plan.blockInset - 6);
     }
+  });
+
+  // Regression: the simulator's off-street parking feature adds "junction" and
+  // "parking" nodes plus mid-block perpendicular driveway links. The planner
+  // predated them and mistook driveways for streets, which wrecked the grid
+  // derivation — sparse blocks, stray paved discs, buildings clustered in block
+  // centres instead of fronting streets.
+  describe("parking-enabled networks", () => {
+    const plain = planCity(gridNetwork("parkcity", 3, 200));
+    const parked = planCity(withParking(gridNetwork("parkcity", 3, 200), 200));
+
+    it("does not let driveways corrupt the derived street pitch", () => {
+      // The core of the regression: a mid-block perpendicular stub is not a
+      // street and must not become one. (`half` and the street count DO move a
+      // little, because garages sit outside the junctions and genuinely enlarge
+      // the network's bounding box — that part is correct.)
+      expect(parked.spacing).toBeCloseTo(plain.spacing, 6);
+      expect(parked.laneWidth).toBeCloseTo(plain.laneWidth, 6);
+      expect(parked.roadHalf).toBeCloseTo(plain.roadHalf, 6);
+    });
+
+    it("still builds a full city rather than thinning out", () => {
+      // The visible symptom was blocks emptying out; the count should track the
+      // slightly larger extent, not collapse.
+      const ratio = parked.buildings.length / plain.buildings.length;
+      expect(ratio).toBeGreaterThan(0.9);
+      expect(ratio).toBeLessThan(1.2);
+    });
+
+    it("keeps buildings off the driveways and garages", () => {
+      const meta = withParking(gridNetwork("parkcity", 3, 200), 200);
+      for (const b of parked.buildings) {
+        expect(distanceToLanes(meta, b.x, b.y)).toBeGreaterThan(b.width / 2 - 0.5);
+      }
+    });
+
+    it("never overlaps two building footprints with parking present", () => {
+      // Same cheap grid broadphase as the no-parking case; the pairwise loop is
+      // far too slow at this instance count.
+      const cell = new Map<string, { x: number; y: number; r: number }[]>();
+      for (const b of parked.buildings) {
+        if (b.tier === "massing") continue;
+        const r = b.width / 2;
+        const cx = Math.round(b.x / 40);
+        const cy = Math.round(b.y / 40);
+        for (const dx of [-1, 0, 1]) {
+          for (const dy of [-1, 0, 1]) {
+            for (const other of cell.get(`${cx + dx}:${cy + dy}`) ?? []) {
+              const ox = r + other.r - Math.abs(b.x - other.x);
+              const oy = r + other.r - Math.abs(b.y - other.y);
+              expect(Math.min(ox, oy)).toBeLessThan(1.5);
+            }
+          }
+        }
+        const bucket = cell.get(`${cx}:${cy}`) ?? [];
+        bucket.push({ x: b.x, y: b.y, r });
+        cell.set(`${cx}:${cy}`, bucket);
+      }
+    });
   });
 
   it("never overlaps two building footprints", () => {
