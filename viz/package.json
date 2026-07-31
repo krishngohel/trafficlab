@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:web": "node scripts/build_web.mjs"
   },
   "dependencies": {
     "@types/three": "^0.185.1",

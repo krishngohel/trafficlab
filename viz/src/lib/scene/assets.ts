@@ -16,7 +16,12 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
  * `buildEnvironmentMap`, which needs one.
  */
 
-export const ASSET_BASE = "/assets";
+/**
+ * Runtime fetches are not rewritten by Next's `basePath`, so a build served
+ * from a subpath (GitHub Pages project sites) has to carry the prefix itself.
+ * Empty string for dev and root-hosted builds, i.e. unchanged behaviour.
+ */
+export const ASSET_BASE = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/assets`;
 
 // ---------------------------------------------------------------------------
 // Selection + tuning

@@ -1,0 +1,757 @@
+/*
+ * Public showcase page. Shares the instrument's palette (see Viewer.module.css)
+ * but its own typographic scale: this page is read, not operated.
+ */
+
+.page {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #0a0c10;
+  color: #d6dae0;
+  font-size: 15px;
+  line-height: 1.5;
+
+  --surface: #12161d;
+  --surface-soft: #0e1218;
+  --edge: #232b38;
+  --edge-strong: #2c3a4e;
+  --accent: #4a90d9;
+  --accent-text: #9ec7ef;
+  --ink: #d6dae0;
+  --ink-dim: #98a1ae;
+  --ink-faint: #6d7683;
+  --pos: #58c98a;
+  --fixed: #d9a24a;
+  --responsive: #5ac2a0;
+  --radius: 12px;
+  --gutter: clamp(16px, 3vw, 40px);
+}
+
+.shell {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 var(--gutter) 72px;
+}
+
+/* --- top bar ---------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0 8px;
+  flex-wrap: wrap;
+}
+
+.mark {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.topLinks {
+  display: flex;
+  gap: 18px;
+}
+
+.topLinks a,
+.footer a,
+.inlineLink {
+  color: var(--ink-dim);
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--edge-strong);
+  padding-bottom: 1px;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.topLinks a:hover,
+.footer a:hover,
+.inlineLink:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* --- headline ---------------------------------------------------------------- */
+
+.head {
+  padding: clamp(8px, 1.4vw, 18px) 0 clamp(14px, 1.6vw, 20px);
+  max-width: 1040px;
+}
+
+.title {
+  font-size: clamp(25px, 2.9vw, 38px);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  color: #eef2f7;
+}
+
+.lede {
+  margin-top: 10px;
+  font-size: clamp(14.5px, 1.1vw, 16px);
+  line-height: 1.55;
+  color: var(--ink-dim);
+  max-width: 1040px;
+}
+
+/* --- scoreboard (the hero) ---------------------------------------------------- */
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 0.78fr) 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 14px clamp(16px, 1.8vw, 26px) 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+/* A hairline of the side's own colour along the top edge. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--tone, var(--edge-strong));
+}
+
+.cardFixed {
+  --tone: var(--fixed);
+}
+
+.cardResponsive {
+  --tone: var(--responsive);
+}
+
+.cardLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--tone, var(--ink-faint));
+  font-weight: 500;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone, var(--ink-faint));
+  flex: 0 0 auto;
+}
+
+.cardValue {
+  font-size: clamp(34px, 4.1vw, 56px);
+  line-height: 1.02;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: #f2f5f9;
+  margin-top: 4px;
+}
+
+.cardUnit {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.cardSecond {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--edge);
+  font-size: 14px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cardSecond b {
+  color: #e4e9ef;
+  font-weight: 500;
+  font-size: 17px;
+}
+
+/* Centre cell: the live gap. */
+.gapCard {
+  background: var(--surface-soft);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: clamp(14px, 1.6vw, 22px) 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.gapLabel {
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.gapValue {
+  font-size: clamp(30px, 3.8vw, 50px);
+  line-height: 1.02;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.gapValue[data-lead="responsive"] {
+  color: var(--responsive);
+}
+
+.gapValue[data-lead="fixed"] {
+  color: var(--fixed);
+}
+
+.gapNote {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+  max-width: 24ch;
+}
+
+/*
+ * The live gap swings: the fixed timer is ahead early on and the responsive
+ * signal overtakes it as the queues build. Stating where the clip ends up,
+ * permanently and on the same card, stops a visitor who arrives at minute two
+ * from reading the wrong conclusion.
+ */
+.gapOutcome {
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--edge);
+  width: 100%;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.scoreFoot {
+  margin: 10px 2px 0;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+/* --- stage -------------------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  margin-top: 14px;
+  height: clamp(300px, 38vh, 420px);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0d1117;
+}
+
+.canvasHost {
+  position: absolute;
+  inset: 0;
+}
+
+.canvasHost canvas {
+  display: block;
+}
+
+/* Swallows touch drags so the page still scrolls on a phone. */
+.touchGuard {
+  display: none;
+  position: absolute;
+  inset: 0;
+  touch-action: pan-y;
+  z-index: 3;
+}
+
+.sideTag {
+  position: absolute;
+  top: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(10, 13, 18, 0.82);
+  border: 1px solid var(--edge-strong);
+  border-radius: 999px;
+  padding: 5px 13px 5px 10px;
+  font-size: 12.5px;
+  color: #dfe5ec;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.sideTagLeft {
+  left: 12px;
+  --tone: var(--fixed);
+}
+
+.sideTagRight {
+  right: 12px;
+  --tone: var(--responsive);
+}
+
+/* --- loading / error ----------------------------------------------------------- */
+
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #0d1117;
+  padding: 24px;
+  text-align: center;
+}
+
+.loadingLabel {
+  font-size: 13.5px;
+  color: var(--ink-dim);
+}
+
+.loadingBar {
+  width: min(320px, 70%);
+  height: 4px;
+  border-radius: 999px;
+  background: #1b2230;
+  overflow: hidden;
+}
+
+.loadingFill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 180ms linear;
+}
+
+.loadingHint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.failure {
+  color: #f0b7ba;
+  font-size: 13.5px;
+  max-width: 46ch;
+  line-height: 1.5;
+}
+
+/* --- caption ------------------------------------------------------------------- */
+
+.caption {
+  margin-top: 14px;
+  min-height: 3em;
+  font-size: clamp(14.5px, 1.15vw, 16.5px);
+  line-height: 1.55;
+  color: #c3ccd7;
+  max-width: 78ch;
+  transition: opacity 260ms ease;
+}
+
+/* --- controls ------------------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--edge);
+}
+
+.btn {
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1;
+  color: var(--ink);
+  background: #1b2330;
+  border: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  height: 38px;
+  padding: 0 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: #243042;
+  border-color: #3d5a7a;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btnPlay {
+  min-width: 104px;
+  background: #22354f;
+  border-color: var(--accent);
+  color: #eaf1fb;
+}
+
+.btnPlay:hover:not(:disabled) {
+  background: #2b4262;
+}
+
+.speedGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+.speedLabel {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.speedPills {
+  display: flex;
+  border: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pill {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--edge-strong);
+  height: 36px;
+  padding: 0 13px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.pill:first-child {
+  border-left: 0;
+}
+
+.pill:hover {
+  background: #1a2331;
+  color: var(--ink);
+}
+
+.pillOn {
+  background: #16202e;
+  color: var(--accent-text);
+}
+
+.btn:focus-visible,
+.pill:focus-visible,
+.introBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.elapsed {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.track {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: #1b2230;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.trackFill {
+  height: 100%;
+  width: 0%;
+  background: #3f5f85;
+  border-radius: 999px;
+  transition: width 240ms linear;
+}
+
+/* --- measured results ------------------------------------------------------------ */
+
+.results {
+  margin-top: clamp(36px, 5vw, 64px);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.resultCard {
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.resultKicker {
+  font-size: 11.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.resultBig {
+  margin-top: 8px;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--pos);
+  font-variant-numeric: tabular-nums;
+}
+
+.resultBody {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.smallprint {
+  margin-top: 22px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-faint);
+  max-width: 80ch;
+}
+
+.footer {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--edge);
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* --- intro overlay ---------------------------------------------------------------- */
+
+.introBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(5, 7, 11, 0.82);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.intro {
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  border-radius: 16px;
+  padding: clamp(22px, 3vw, 36px);
+  width: min(620px, 100%);
+  margin: auto;
+}
+
+.introTitle {
+  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #eef2f7;
+}
+
+.introBody {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #c3ccd7;
+}
+
+.introBody strong {
+  color: #eef2f7;
+  font-weight: 500;
+}
+
+.introSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.introSide {
+  border: 1px solid var(--edge);
+  border-left: 2px solid var(--tone);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.introSideName {
+  display: block;
+  color: var(--tone);
+  font-size: 12px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.introBtn {
+  margin-top: 20px;
+  font: inherit;
+  font-size: 15px;
+  height: 46px;
+  padding: 0 26px;
+  border-radius: 9px;
+  background: #22354f;
+  border: 1px solid var(--accent);
+  color: #eaf1fb;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.introBtn:hover {
+  background: #2b4262;
+}
+
+.introFoot {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+/* --- narrow screens ---------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .scoreboard {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* The two sides stay side by side; the gap sits underneath them, never above
+     — the live gap swings early on and must not be the first thing read. */
+  .cardFixed {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .cardResponsive {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .gapCard {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 12px;
+    padding: 12px 16px;
+  }
+
+  .gapLabel {
+    width: 100%;
+  }
+
+  .gapNote {
+    max-width: none;
+  }
+
+  .card {
+    padding: 14px 15px;
+  }
+
+  .cardValue {
+    font-size: clamp(28px, 8.5vw, 40px);
+  }
+
+  .cardUnit,
+  .cardSecond {
+    font-size: 12.5px;
+  }
+
+  .cardSecond b {
+    font-size: 15px;
+  }
+
+  .stage {
+    height: clamp(280px, 52vh, 380px);
+  }
+
+  .touchGuard {
+    display: block;
+  }
+
+  .sideTag {
+    font-size: 11px;
+    padding: 4px 10px 4px 8px;
+    top: 8px;
+  }
+
+  .sideTagLeft {
+    left: 8px;
+  }
+
+  .sideTagRight {
+    right: 8px;
+  }
+
+  .introSplit {
+    grid-template-columns: 1fr;
+  }
+
+  .elapsed {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caption,
+  .loadingFill {
+    transition: none;
+  }
+}

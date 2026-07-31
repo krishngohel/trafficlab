@@ -46,3 +46,5 @@ next-env.d.ts
 /assets_src
 # scratch output from the headless review scripts
 /.visual
+
+out/
