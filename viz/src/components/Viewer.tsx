@@ -126,7 +126,9 @@ export default function Viewer() {
 
   const loadDemo = useCallback(
     (fixture: string) => {
-      fetch(`/fixtures/${fixture}`)
+      // Runtime fetches are not rewritten by Next's basePath, so a build served
+      // from a subpath (GitHub Pages project site) has to add it here.
+      fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fixtures/${fixture}`)
         .then((res) => {
           if (!res.ok) throw new Error(`demo fetch failed: HTTP ${res.status}`);
           return res.arrayBuffer();

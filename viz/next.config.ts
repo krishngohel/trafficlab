@@ -18,6 +18,8 @@ const nextConfig: NextConfig = staticExport
   ? {
       output: "export",
       images: { unoptimized: true },
+      // Static hosts resolve /studio/ to studio/index.html, not studio.html.
+      trailingSlash: true,
       ...(basePath ? { basePath, assetPrefix: basePath } : {}),
       env: { NEXT_PUBLIC_BASE_PATH: basePath },
     }

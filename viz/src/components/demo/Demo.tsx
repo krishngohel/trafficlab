@@ -239,7 +239,7 @@ export default function Demo() {
         <header className={styles.topbar}>
           <span className={styles.mark}>trafficlab</span>
           <nav className={styles.topLinks}>
-            <Link href="/">Open the research tool</Link>
+            <Link href="/studio" prefetch={false}>Open the research tool</Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer">
               Source on GitHub
             </a>
@@ -376,7 +376,7 @@ export default function Demo() {
         </p>
 
         <footer className={styles.footer}>
-          <Link href="/">Open the full research tool</Link>
+          <Link href="/studio" prefetch={false}>Open the full research tool</Link>
           <a href={REPO_URL} target="_blank" rel="noreferrer">
             Source on GitHub
           </a>

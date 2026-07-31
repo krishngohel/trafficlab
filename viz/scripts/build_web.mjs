@@ -11,8 +11,18 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** Fixtures the public build is allowed to ship. */
-const KEEP = new Set(["demo_fixed.traj", "demo_actuated.traj"]);
+/**
+ * Fixtures the public build ships: the two the guided demo plays, plus the
+ * three the research tool's own demo buttons offer. Anything referenced by a
+ * shipped button has to be here or that button 404s in production.
+ */
+const KEEP = new Set([
+  "demo_fixed.traj",
+  "demo_actuated.traj",
+  "city.traj",
+  "grid4x4_demo.traj",
+  "single_actuated.traj",
+]);
 
 // `shell: true` is required on Windows, where npx resolves to a .cmd shim that
 // execFileSync cannot spawn directly.
