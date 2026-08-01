@@ -84,9 +84,19 @@ describe("formatPercent", () => {
 });
 
 describe("describeGap", () => {
-  it("names the leading side in seconds per driver", () => {
-    expect(describeGap(waitGap(122.7, 107.4))).toBe("Responsive signal ahead by 15s a driver");
-    expect(describeGap(waitGap(18.8, 23.6))).toBe("Fixed timer ahead by 5s a driver");
+  it("names the leading side in seconds per driver who got through", () => {
+    expect(describeGap(waitGap(122.7, 107.4))).toBe(
+      "Responsive signal ahead by 15s a driver who got through",
+    );
+    expect(describeGap(waitGap(18.8, 23.6))).toBe(
+      "Fixed timer ahead by 5s a driver who got through",
+    );
+  });
+
+  it("states the same denominator the rest of the page uses", () => {
+    // The live line and the result cards must not describe two different
+    // crowds — that mismatch is exactly what made the page contradict itself.
+    expect(describeGap(waitGap(244.2, 184.7))).toContain(CLIP_RESULT.basis.replace("per ", "a "));
   });
 
   it("has a plain phrase for level and for no data", () => {

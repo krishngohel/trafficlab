@@ -5,9 +5,10 @@
  * is pure (no DOM, no three.js) so the numbers on the showcase page are unit
  * tested exactly like the ones in the instrument.
  *
- * The underlying statistics are NOT reimplemented here — mean wait comes from
- * `meanWaitAt` and the side-vs-side gap from `relativeDelta`, both in
- * `src/lib/wait.ts`.
+ * The underlying statistics are NOT reimplemented here — the wait itself comes
+ * from `waitPerFinisherAt` / `rollingWaitAt` in `./rolling.ts` (the page's one
+ * denominator, drivers who got through) and the side-vs-side gap from
+ * `relativeDelta` in `src/lib/wait.ts`.
  */
 
 import { relativeDelta } from "../wait";
@@ -70,8 +71,10 @@ export function formatPercent(pct: number): string {
 }
 
 /**
- * One line of everyday English describing the gap, e.g.
- * "Responsive signal is 12% ahead" — the sentence under the big number.
+ * One line of everyday English describing the gap, e.g. "Responsive signal
+ * ahead by 59s a driver who got through" — the sentence under the big number.
+ * It names the denominator, because it is the same one every other wait figure
+ * on the page uses and the page is only readable if that stays said.
  */
 export function describeGap(gap: WaitGap): string {
   switch (gap.leader) {
@@ -80,9 +83,9 @@ export function describeGap(gap: WaitGap): string {
     case "even":
       return "Neck and neck so far";
     case "responsive":
-      return `Responsive signal ahead by ${formatClock(Math.abs(gap.seconds))} a driver`;
+      return `Responsive signal ahead by ${formatClock(Math.abs(gap.seconds))} a driver who got through`;
     case "fixed":
-      return `Fixed timer ahead by ${formatClock(Math.abs(gap.seconds))} a driver`;
+      return `Fixed timer ahead by ${formatClock(Math.abs(gap.seconds))} a driver who got through`;
   }
 }
 

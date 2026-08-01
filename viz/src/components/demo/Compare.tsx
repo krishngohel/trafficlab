@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   CAPTIONS,
+  CLIP_PER_ENTRANT,
   CLIP_RESULT,
   CLIP_SAVED,
   FIXTURES,
@@ -176,13 +177,14 @@ export default function Compare() {
           handles={live}
           foot={
             <>
-              Longer bar means longer waiting. Both of these are running averages over everything
-              since the clip started, so they climb towards a settled value as the queues build —
-              that is the shape of a running average, not the waiting getting worse. The counter
-              above is the thing that measures the improvement: the gap between the two, which
-              reaches {formatSaved(CLIP_SAVED.savedSeconds)} by the end of these{" "}
-              {CLIP_RESULT.minutes} minutes, with the responsive signal {CLIP_RESULT.waitReductionPct}%
-              ahead on the average.
+              Longer bar means longer waiting. Both of these are the same reading as the falling
+              number in part one — the waiting a light has generated, shared out between the drivers
+              who actually got through it — measured over the whole clip so far instead of the last
+              minute, so they climb towards a settled value as the queues build rather than falling.
+              The counter above is the thing that measures the improvement: the gap between the two,
+              which reaches {formatSaved(CLIP_SAVED.savedSeconds)} by the end of these{" "}
+              {CLIP_RESULT.minutes} minutes, with the responsive signal{" "}
+              {CLIP_RESULT.waitReductionPct}% ahead on that average.
             </>
           }
         />
@@ -320,10 +322,11 @@ export default function Compare() {
             <p>
               <b>Waiting saved</b> is the gap between the two runs&rsquo; total delay: every second
               a driver on the left spent stopped that their twin on the right did not, added across
-              everybody. It climbs because the saving keeps accruing. <b>Average wait</b> is each
-              side&rsquo;s own running average since the clip began — good for comparing the two,
-              but it settles rather than falls, which is why the section above uses a rolling window
-              instead. <b>Cars through</b> is how many have finished their trip.
+              everybody. It climbs because the saving keeps accruing. <b>Average wait</b> is that
+              side&rsquo;s waiting so far divided by the drivers who have got through so far — the
+              same statistic part one puts on screen, over the whole clip instead of the last
+              minute, so it settles rather than falls. <b>Cars through</b> is how many have finished
+              their trip, and it is the denominator of the average beside it.
             </p>
           </div>
         </div>
@@ -338,10 +341,10 @@ export default function Compare() {
             {formatCount(CLIP_SAVED.fixedDelaySeconds)} driver-seconds of delay and the responsive
             signal {formatCount(CLIP_SAVED.responsiveDelaySeconds)} — a difference of{" "}
             {formatCount(CLIP_SAVED.savedSeconds)} seconds, which is exactly what the counter above
-            counts up to. Average wait per driver fell from{" "}
+            counts up to. Average wait {CLIP_RESULT.basis} fell from{" "}
             {formatClock(CLIP_RESULT.fixedWaitSeconds)} to{" "}
             {formatClock(CLIP_RESULT.responsiveWaitSeconds)}, {CLIP_RESULT.waitReductionPct}% less,
-            while {CLIP_RESULT.responsiveCars} cars got through the junction instead of{" "}
+            while {CLIP_RESULT.responsiveCars} drivers got through the junction instead of{" "}
             {CLIP_RESULT.fixedCars}. More traffic, less waiting.
           </p>
         </div>
@@ -356,7 +359,17 @@ export default function Compare() {
             A single ten-minute clip is a demonstration, not evidence. Measured properly, over{" "}
             {STUDY_RESULT.runsPerSide} separate one-hour runs for each light:{" "}
             {STUDY_RESULT.heavyReductionPct}% less waiting under heavy traffic and{" "}
-            {STUDY_RESULT.rushReductionPct}% under rush-hour traffic.
+            {STUDY_RESULT.rushReductionPct}% under rush-hour traffic. Those percentages are measured
+            on a stricter denominator than the {CLIP_RESULT.waitReductionPct}% beside them: the
+            study divides the waiting {STUDY_RESULT.basis} — including everybody still stuck in a
+            queue when the hour runs out — while every figure on this page divides it{" "}
+            {CLIP_RESULT.basis}. That is why the study&rsquo;s heavy-traffic number is the lower
+            one. Measure the clip above the study&rsquo;s way and it reads{" "}
+            {formatClock(CLIP_PER_ENTRANT.fixedWaitSeconds)} against{" "}
+            {formatClock(CLIP_PER_ENTRANT.responsiveWaitSeconds)}, a{" "}
+            {CLIP_PER_ENTRANT.waitReductionPct}% cut — so the clip on screen is representative of
+            the study rather than better than it, and the {STUDY_RESULT.heavyReductionPct}% is the
+            figure to quote.
           </p>
         </div>
       </div>

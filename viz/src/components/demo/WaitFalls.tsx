@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  CLIP_RESULT,
   FIXTURES,
   SIDE_LABELS,
   SWITCH_CAPTIONS,
@@ -201,7 +202,7 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
       write(
         waitLine.current,
         Number.isFinite(wait)
-          ? `of waiting for every driver who got through, over the last ${SWITCH_RESULT.windowSeconds} seconds of the clip.`
+          ? `of waiting per driver who got through, over the last ${SWITCH_RESULT.windowSeconds} seconds of the clip.`
           : `The reading needs a full ${SWITCH_RESULT.windowSeconds} seconds of clip behind it before it means anything.`,
       );
       write(
@@ -310,7 +311,7 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
       <div ref={panel} className={styles.waitPanel} data-light="fixed">
         <div className={styles.waitMain}>
           <span className={styles.heroKicker}>
-            Waiting per driver through the junction · last {SWITCH_RESULT.windowSeconds} seconds
+            Waiting per driver who got through · last {SWITCH_RESULT.windowSeconds} seconds
           </span>
           <strong ref={waitValue} className={styles.waitValue}>
             –
@@ -350,7 +351,7 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
             windowSeconds={SWITCH_RESULT.windowSeconds}
             formatValue={formatClock}
             handleRef={spark}
-            label={`Waiting per driver through the junction over a rolling ${SWITCH_RESULT.windowSeconds}-second window, against clip time. It runs at about ${formatClock(SWITCH_RESULT.beforeWaitSeconds)} under the fixed timer and steps down to about ${formatClock(SWITCH_RESULT.afterWaitSeconds)} after the responsive signal takes over at ${switchClock}.`}
+            label={`Waiting per driver who got through the junction, over a rolling ${SWITCH_RESULT.windowSeconds}-second window, against clip time. It runs at about ${formatClock(SWITCH_RESULT.beforeWaitSeconds)} under the fixed timer and steps down to about ${formatClock(SWITCH_RESULT.afterWaitSeconds)} after the responsive signal takes over at ${switchClock}.`}
           />
         )}
         <figcaption className={styles.sparkFoot}>
@@ -452,7 +453,8 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
           <p className={styles.resultBody}>
             Averaged over every {SWITCH_RESULT.windowSeconds}-second window that sits entirely under
             one light — so no window straddles the handover — the reading runs at{" "}
-            {formatClock(SWITCH_RESULT.beforeWaitSeconds)} per driver under the fixed timer and{" "}
+            {formatClock(SWITCH_RESULT.beforeWaitSeconds)} per driver who got through under the
+            fixed timer and{" "}
             {formatClock(SWITCH_RESULT.afterWaitSeconds)} under the responsive signal,{" "}
             {SWITCH_RESULT.windowFallPct}% less. Those are averages of a jumpy measure and their
             ranges overlap ({formatClock(SWITCH_RESULT.beforeLowSeconds)}–
@@ -476,7 +478,7 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
             against the identical run left on the timer — the recording in part two, which is the
             same simulation, seed and arrivals as this one right up to the handover. Over{" "}
             {switchClock} to {SWITCH_CLIP.minutes}:00 the responsive signal cost{" "}
-            {formatClock(SWITCH_RESULT.secondHalfWaitSeconds)} per driver cleared and put{" "}
+            {formatClock(SWITCH_RESULT.secondHalfWaitSeconds)} per driver who got through and put{" "}
             {SWITCH_RESULT.secondHalfCars} drivers through; the timer would have cost{" "}
             {formatClock(SWITCH_RESULT.heldFixedWaitSeconds)} and put {SWITCH_RESULT.heldFixedCars}{" "}
             through. Left alone this junction was getting worse — from{" "}
@@ -489,13 +491,19 @@ export default function WaitFalls({ holdAtStart }: { holdAtStart: boolean }) {
       </div>
 
       <p className={styles.fallsNote}>
-        A note on what this number is, because it is not the same one as the section below. It
-        divides the waiting the junction generated during a minute by the drivers who actually
-        cleared it during that minute. The whole-clip &ldquo;average wait per driver&rdquo; further
-        down divides total waiting by everybody who has ever appeared, including the hundred-odd
-        drivers still sitting in the queue when the recording stops — so it reads much lower. Both
-        come off the same two series in the same file; they answer different questions, and only
-        this one can move in either direction, which is the entire reason it is here.
+        A note on what this number is, because the sections below print it too. Every wait figure on
+        this page is the same arithmetic: the waiting a junction generated, divided by the drivers
+        who actually got through it. The only thing that changes is the stretch of clip. Here it is
+        the last minute, which is why it can come down; below it is a whole run, which is why it
+        settles instead. The two agree — this timer averages{" "}
+        {formatClock(SWITCH_RESULT.beforeWaitSeconds)} a driver over its five minutes, and the same
+        timer left running for the full ten minutes in part two comes out at{" "}
+        {formatClock(CLIP_RESULT.fixedWaitSeconds)}, because the five minutes it does not get to run
+        here are its worse half ({formatClock(SWITCH_RESULT.firstHalfWaitSeconds)} then{" "}
+        {formatClock(SWITCH_RESULT.heldFixedWaitSeconds)}). Dividing by the drivers who got through
+        is the generous choice, not the strict one: it leaves out everybody still queuing when the
+        recording stops. The ten-run study in part two divides by every driver who entered instead,
+        and its percentages are the lower ones.
       </p>
     </section>
   );

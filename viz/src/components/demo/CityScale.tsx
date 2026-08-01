@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { CITY_RESULT, CITY_SAVED, FIXTURES, METRO, SIDE_LABELS } from "@/lib/demo/story";
+import {
+  CITY_PER_ENTRANT,
+  CITY_RESULT,
+  CITY_SAVED,
+  FIXTURES,
+  METRO,
+  SIDE_LABELS,
+  STUDY_RESULT,
+} from "@/lib/demo/story";
 import { formatClock, formatCount } from "@/lib/demo/format";
 import { formatSaved } from "@/lib/demo/savings";
 import { fetchWithProgress, formatBytes, loadPercent } from "@/lib/demo/load";
@@ -212,9 +220,11 @@ export default function CityScale() {
           carsUnit="trips finished so far"
           foot={
             <>
-              Read exactly as above: the counter above is waiting that never happened, and the two
-              averages here are running averages that settle upward as the clip goes on rather than
-              getting worse. Every number is the whole city added together, all{" "}
+              Read exactly as above: the counter is waiting that never happened, and the two
+              averages are the same reading as everywhere else on this page — each city&rsquo;s
+              waiting so far, shared out between the drivers who have actually got through it — so
+              they settle upward as the clip goes on rather than getting worse. Every number is the
+              whole city added together, all{" "}
               {junctions}
               {" junctions’ worth, on each side."}
             </>
@@ -364,7 +374,7 @@ export default function CityScale() {
             {formatCount(CITY_SAVED.fixedDelaySeconds)} driver-seconds of delay in five minutes and
             the responsive signals {formatCount(CITY_SAVED.responsiveDelaySeconds)} — very nearly
             eleven hours of collective standing still, gone, from five minutes of one city. Average
-            wait per driver was {formatClock(CITY_RESULT.fixedWaitSeconds)} against{" "}
+            wait {CITY_RESULT.basis} was {formatClock(CITY_RESULT.fixedWaitSeconds)} against{" "}
             {formatClock(CITY_RESULT.responsiveWaitSeconds)}, {CITY_RESULT.waitReductionPct}% less,
             and {formatCount(CITY_RESULT.responsiveCars)} drivers finished their trip instead of{" "}
             {formatCount(CITY_RESULT.fixedCars)}, {CITY_RESULT.extraCars} more. The single-junction
@@ -376,13 +386,20 @@ export default function CityScale() {
           <p className={styles.resultBody}>
             The saved-waiting counter needs no caveat: total delay is written into both recordings
             directly, so the number ticking over the picture lands on exactly the{" "}
-            {formatCount(CITY_SAVED.savedSeconds)} seconds quoted here. The average-wait figures do
-            need one. They divide that delay by every driver the simulation created, whereas the
-            browser can only count drivers still on the map plus those who finished at the
-            roadside — and in this city a good number of trips end in an off-street parking space
-            the recording does not tally. So the live averages read a little high, 1m 55s against
-            1m 37s, a 16% gap rather than this {CITY_RESULT.waitReductionPct}% one. Both are
-            measured; the {CITY_RESULT.waitReductionPct}% is the one that counts everybody.
+            {formatCount(CITY_SAVED.savedSeconds)} seconds quoted here, and the live averages land
+            on exactly the two figures beside it. The averages do need a caveat, the same one that
+            applies to every section of this page. Dividing {CITY_RESULT.basis} is the generous
+            denominator: it leaves out the {formatCount(CITY_PER_ENTRANT.stillDrivingAtEnd)}{" "}
+            drivers still queuing across the two cities when the five minutes stop, and it cannot
+            see a trip that ends in an off-street parking space, because a recording only tallies
+            drivers who finish at the roadside. Divide the same delay by every driver the simulation put on the map and the
+            same five minutes read {formatClock(CITY_PER_ENTRANT.fixedWaitSeconds)} against{" "}
+            {formatClock(CITY_PER_ENTRANT.responsiveWaitSeconds)}, a{" "}
+            {CITY_PER_ENTRANT.waitReductionPct}% cut rather than this{" "}
+            {CITY_RESULT.waitReductionPct}% one. Both are measured off these two files. The{" "}
+            {STUDY_RESULT.runsPerSide}-run study
+            in part two uses that stricter, per-entrant denominator, which is why its{" "}
+            {STUDY_RESULT.heavyReductionPct}% sits below the percentages the clips show.
           </p>
         </div>
       </div>

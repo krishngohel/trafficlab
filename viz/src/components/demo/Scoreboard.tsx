@@ -20,7 +20,7 @@ export interface LiveHandles {
   /** The supporting "31% faster" reading off mean speed. */
   fasterValue: HTMLElement | null;
   fasterLine: HTMLElement | null;
-  /** Running-average wait readout, [fixed, responsive]. Deliberately small. */
+  /** Wait-per-driver-through readout, [fixed, responsive]. Deliberately small. */
   wait: [HTMLSpanElement | null, HTMLSpanElement | null];
   /** Cars-through readout, [fixed, responsive]. */
   cars: [HTMLElement | null, HTMLElement | null];
@@ -60,11 +60,14 @@ export function emptyHandles(): LiveHandles {
  * One light's row: who it is, how long its drivers have waited on average drawn
  * as a bar, and the two numbers behind the bar.
  *
- * These are running averages since the clip started, so they climb towards a
- * settled value rather than falling — which is exactly why they are no longer
- * the headline, and why the unit under each one says so out loud. Two of these
- * stacked is still the side-by-side comparison: a visitor reads which bar is
- * shorter without reading a digit.
+ * The wait is the page's ONE definition of waiting — the delay this light has
+ * generated so far over the drivers who have actually got through it so far,
+ * the same statistic part one prints, taken over the whole clip instead of the
+ * trailing minute. Over a whole clip it climbs towards a settled value rather
+ * than falling, which is why it is not the headline and why the unit under it
+ * says both things out loud: whose average it is, and that it settles. Two of
+ * these stacked is still the side-by-side comparison: a visitor reads which bar
+ * is shorter without reading a digit.
  */
 function Row({
   name,
@@ -128,7 +131,8 @@ function Row({
           Faster
         </span>
         <span className={styles.rowWaitUnit}>
-          average wait per driver <b>so far</b> (a running average — it settles as the clip runs)
+          average wait <b>per driver who got through</b>, over the whole clip so far (it settles as
+          the clip runs rather than falling)
         </span>
       </div>
 
@@ -148,7 +152,8 @@ function Row({
  * the point — it is a benefit adding up, and the words around it say so. Beside
  * it sits a reading that genuinely moves both ways, how much faster the traffic
  * is flowing on the responsive side over the last minute. Underneath, smaller,
- * the two settling averages and their bars.
+ * the two settling averages and their bars — on the same per-driver-through
+ * denominator as every other wait figure on the page.
  *
  * Nothing here holds state: the caller owns the elements and writes them from
  * the render loop. Both comparisons on the page use this component — the one

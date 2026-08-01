@@ -34,6 +34,33 @@ export const SIDE_LABELS = {
 } as const;
 
 /**
+ * The two denominators an "average wait per driver" can have, named, so every
+ * figure on the page can say which one it is and a test can check that it does.
+ *
+ * PER FINISHER is what the page shows, in all three parts: the waiting the
+ * network generated, divided by the drivers who actually got through it. It is
+ * the only denominator a `.traj` recording can compute honestly frame by frame,
+ * and it is the one that falls when the light improves.
+ *
+ * PER ENTRANT is what the repo's ten-run evaluation uses: the same waiting
+ * divided by every driver the simulation ever put on the map, including
+ * everyone still queuing when the run ends. It is the stricter of the two and
+ * its percentages come out lower, which is why `STUDY_RESULT` reads below the
+ * clip figures rather than above them. The page says so where both appear.
+ *
+ * The page previously mixed them — a rolling per-finisher reading in part one
+ * against a per-entrant running average in parts two and three — so the same
+ * fixed timer read 3m 53s in one section and 2m 47s in the next. That is the
+ * bug these labels exist to stop coming back.
+ */
+export const WAIT_BASIS = {
+  perFinisher: "per driver who got through",
+  perEntrant: "per driver who entered",
+} as const;
+
+export type WaitBasis = (typeof WAIT_BASIS)[keyof typeof WAIT_BASIS];
+
+/**
  * The recording the page now opens on: `public/fixtures/switch.traj`.
  *
  * ONE junction, ONE continuous ten-minute run, heavy traffic throughout, seed 0,
@@ -131,7 +158,26 @@ export const SWITCH_RESULT = {
 } as const;
 
 /**
- * Headline results for the ten-minute clip on screen.
+ * Headline results for the ten-minute side-by-side pair on screen.
+ *
+ * MEASURED off the last frame of the two recordings the browser plays, on the
+ * page's one denominator (`WAIT_BASIS.perFinisher`): `cumulative_delay` over
+ * `throughput`.
+ *
+ *   demo_fixed.traj      84970.6 s of delay ÷ 348 finishers = 244.2 s = 4m 04s
+ *   demo_actuated.traj   77216.2 s of delay ÷ 418 finishers = 184.7 s = 3m 05s
+ *   a cut of 24.3%
+ *
+ * So the scoreboard's live rows land on exactly these two figures at the end of
+ * the clip, and they are the same statistic part one prints — the difference
+ * between the sections is the span (whole clip here, trailing minute there),
+ * not the arithmetic. Part one's timer averages 3m 53s over its five minutes;
+ * this run's timer averages 4m 04s over ten, because the second five minutes
+ * are the worse half (3m 51s then 4m 19s — see `SWITCH_RESULT`).
+ *
+ * The same two files measured the study's stricter way are in
+ * `CLIP_PER_ENTRANT` below, and the page quotes both rather than picking the
+ * flattering one and going quiet.
  *
  * The clip opens on a junction that is ALREADY carrying traffic (the simulation
  * is warmed up for five minutes before recording starts — see
@@ -143,11 +189,31 @@ export const SWITCH_RESULT = {
  */
 export const CLIP_RESULT = {
   minutes: 10,
-  fixedWaitSeconds: 167,
-  responsiveWaitSeconds: 135,
-  waitReductionPct: 19,
+  basis: WAIT_BASIS.perFinisher,
+  fixedWaitSeconds: 244.2,
+  responsiveWaitSeconds: 184.7,
+  waitReductionPct: 24,
   fixedCars: 348,
   responsiveCars: 418,
+} as const;
+
+/**
+ * The same junction pair on the study's denominator, for the honesty note.
+ *
+ * 84970.6 ÷ (348 finished + 161 still driving) = 166.9 s against
+ * 77216.2 ÷ (418 + 155) = 134.8 s, a cut of 19.3%. That it lands on the ten-run
+ * study's heavy-demand figure to the whole percent is a genuine coincidence of
+ * one seed, not an extra result — but it is the cleanest way to show a reader
+ * why the study's number is lower than the clip's: it is the same recording,
+ * divided by a bigger and stricter crowd.
+ */
+export const CLIP_PER_ENTRANT = {
+  basis: WAIT_BASIS.perEntrant,
+  fixedWaitSeconds: 166.9,
+  responsiveWaitSeconds: 134.8,
+  waitReductionPct: 19,
+  /** Drivers still on the map at the final frame, both runs added together. */
+  stillDrivingAtEnd: 316,
 } as const;
 
 /**
@@ -197,32 +263,60 @@ export const METRO = {
 } as const;
 
 /**
- * What the two city runs cost their drivers. Measured, and reproducible with
+ * What the two city runs cost their drivers, on the page's one denominator.
+ *
+ * MEASURED off the last frame of the two recordings the browser plays, exactly
+ * as `CLIP_RESULT` is, so the live scoreboard converges on these figures rather
+ * than on some other arithmetic done elsewhere:
+ *
+ *   metro_fixed.traj      202651.5 s of delay ÷ 603 finishers = 336.1 s = 5m 36s
+ *   metro_actuated.traj   163128.6 s of delay ÷ 694 finishers = 235.1 s = 3m 55s
+ *   a cut of 30.1%
+ *
+ * Reproducible with
  *
  *   python scripts/simulate.py --network metro --demand metro \
  *     --controller {fixed,actuated} --duration 300 --seed 3 --warmup 300
  *
  * which prints, for fixed: 1981 spawned, delay 202652 veh·s, 1154 still on the
  * map at the end; for actuated: 1912 spawned, delay 163129 veh·s, 983 still on
- * the map. So `waitSeconds` is total delay over EVERY driver the run created
- * (202652/1981 = 102.3, 163129/1912 = 85.3) and `carsCleared` is every driver
- * who finished (1981-1154 = 827, 1912-983 = 929).
+ * the map.
  *
- * IMPORTANT — the live counter on the page is not computing this number. A
- * .traj file records how many drivers are on the map and how many finished at
- * the roadside, but not how many finished by parking off-street, so the
- * browser divides the same total delay by a smaller count and reads a little
- * high (1m 55s against 1m 37s at the end of the clip, a 16% gap rather than
- * this 17% one). The page says so rather than hiding it.
+ * WHY THE COUNTS ARE 603/694 AND NOT 827/929. `simulate.py` can count a trip
+ * that ends in an off-street parking space; a `.traj` file only records the
+ * drivers who finished at the roadside, so its `throughput` column is the
+ * smaller number. The page prints what the recording it is playing actually
+ * carries — and that is deliberately the flattering-to-nobody choice here,
+ * because a smaller denominator makes BOTH average waits read higher. The
+ * per-entrant view of the same five minutes is in `CITY_PER_ENTRANT`.
  */
 export const CITY_RESULT = {
   minutes: 5,
-  fixedWaitSeconds: 102,
-  responsiveWaitSeconds: 85,
-  waitReductionPct: 17,
-  fixedCars: 827,
-  responsiveCars: 929,
-  extraCars: 102,
+  basis: WAIT_BASIS.perFinisher,
+  fixedWaitSeconds: 336.1,
+  responsiveWaitSeconds: 235.1,
+  waitReductionPct: 30,
+  fixedCars: 603,
+  responsiveCars: 694,
+  extraCars: 91,
+} as const;
+
+/**
+ * The city pair on the study's stricter denominator: total delay over everybody
+ * on the map at the final frame, finished or still driving.
+ *
+ * 202651.5 ÷ (603 + 1154) = 115.3 s against 163128.6 ÷ (694 + 983) = 97.3 s, a
+ * cut of 15.7%. Half this city is still queuing when the five minutes run out,
+ * which is why the per-entrant figures are so much smaller than the
+ * per-finisher ones and why their percentage is lower.
+ */
+export const CITY_PER_ENTRANT = {
+  basis: WAIT_BASIS.perEntrant,
+  fixedWaitSeconds: 115.3,
+  responsiveWaitSeconds: 97.3,
+  waitReductionPct: 16,
+  /** Drivers still on the map at the final frame, both cities added together. */
+  stillDrivingAtEnd: 2137,
 } as const;
 
 /**
@@ -248,10 +342,27 @@ export const CITY_SAVED = {
   fasterPct: 17,
 } as const;
 
-/** The rigorous figures: ten full one-hour runs per light. */
+/**
+ * The rigorous figures: ten full one-hour runs per light, from `results/`.
+ *
+ * THESE ARE MEASURED ON A DIFFERENT, STRICTER DENOMINATOR than the clip figures
+ * above, and the page must never present the two as interchangeable. The study
+ * divides each run's total delay by every driver the simulation put on the map,
+ * including everyone still queuing when the hour ends (`WAIT_BASIS.perEntrant`);
+ * the clips divide by the drivers who got through (`WAIT_BASIS.perFinisher`).
+ * The stricter denominator is the bigger one, so the study's percentages come
+ * out BELOW the clip's 24% and 30% — 19% and 35% here — and that is a property
+ * of the measurement, not a disagreement about what happened.
+ *
+ * These numbers are not to be restated in the clips' unit to make them match.
+ * Wherever they appear on the page, a sentence beside them says which crowd
+ * each figure is divided by, and `CLIP_PER_ENTRANT` gives a reader the clip
+ * measured the study's way (19%) so the comparison can be made honestly.
+ */
 export const STUDY_RESULT = {
   runsPerSide: 10,
   hoursPerRun: 1,
+  basis: WAIT_BASIS.perEntrant,
   heavyReductionPct: 19,
   rushReductionPct: 35,
 } as const;
