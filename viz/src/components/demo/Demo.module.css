@@ -93,6 +93,12 @@
   color: #eef2f7;
 }
 
+.title em {
+  font-style: normal;
+  color: var(--responsive);
+  border-bottom: 2px solid color-mix(in srgb, var(--responsive) 45%, transparent);
+}
+
 .lede {
   margin-top: 10px;
   font-size: clamp(14.5px, 1.1vw, 16px);
@@ -101,159 +107,260 @@
   max-width: 1040px;
 }
 
-/* --- scoreboard (the hero) ---------------------------------------------------- */
+/* --- the verdict + comparison bars (the hero) ---------------------------------- */
 
 .scoreboard {
-  display: grid;
-  grid-template-columns: 1fr minmax(200px, 0.78fr) 1fr;
-  gap: 12px;
-  align-items: stretch;
-}
-
-.card {
-  position: relative;
-  background: var(--surface);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  padding: 14px clamp(16px, 1.8vw, 26px) 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  background: var(--surface);
   overflow: hidden;
 }
 
-/* A hairline of the side's own colour along the top edge. */
-.card::before {
+/*
+ * The banner is written live from the simulation, so it says whatever the
+ * numbers say. It is the first thing on the page a visitor can read in one
+ * glance, and the row bars below repeat the same answer without any words.
+ */
+.verdict {
+  position: relative;
+  padding: clamp(14px, 1.7vw, 20px) clamp(16px, 2vw, 26px) clamp(13px, 1.5vw, 17px)
+    clamp(20px, 2.2vw, 30px);
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  --tone: var(--ink-faint);
+}
+
+.verdict::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: var(--tone, var(--edge-strong));
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--tone);
+  transition: background 240ms ease;
 }
 
-.cardFixed {
-  --tone: var(--fixed);
-}
-
-.cardResponsive {
+.verdict[data-lead="responsive"] {
   --tone: var(--responsive);
 }
 
-.cardLabel {
+.verdict[data-lead="fixed"] {
+  --tone: var(--fixed);
+}
+
+.verdictKicker {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.verdictHead {
+  font-size: clamp(22px, 2.7vw, 34px);
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  color: var(--tone);
+}
+
+.verdictDetail {
+  font-size: clamp(14.5px, 1.2vw, 17px);
+  line-height: 1.45;
+  color: #dbe2ea;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * One row per light: name, a bar as long as its drivers' waiting, then the two
+ * numbers. Stacked, the bars are a two-bar chart — the comparison is made by
+ * eye, not by subtracting one readout from the other.
+ */
+.row {
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(90px, 1fr) minmax(190px, 240px) minmax(
+      120px,
+      170px
+    );
+  align-items: center;
+  gap: clamp(12px, 1.6vw, 24px);
+  padding: clamp(12px, 1.5vw, 18px) clamp(16px, 2vw, 26px);
+}
+
+.row + .row {
+  border-top: 1px solid var(--edge);
+}
+
+.rowFixed {
+  --tone: var(--fixed);
+}
+
+.rowResponsive {
+  --tone: var(--responsive);
+}
+
+.rowWho {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowName {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--tone, var(--ink-faint));
+  font-size: clamp(14px, 1.15vw, 16px);
   font-weight: 500;
+  color: var(--tone);
+}
+
+.rowWhere {
+  font-size: 12px;
+  color: var(--ink-faint);
+  padding-left: 17px;
+  white-space: nowrap;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--tone, var(--ink-faint));
   flex: 0 0 auto;
 }
 
-.cardValue {
-  font-size: clamp(34px, 4.1vw, 56px);
-  line-height: 1.02;
+.barTrack {
+  height: 26px;
+  border-radius: 5px;
+  background: #171d27;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  width: 0%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tone) 62%, #0a0c10), var(--tone));
+  transition: width 240ms ease;
+}
+
+.rowWait {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.rowWaitValue {
+  font-size: clamp(30px, 3.4vw, 44px);
+  line-height: 1;
   font-weight: 500;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   color: #f2f5f9;
-  margin-top: 4px;
 }
 
-.cardUnit {
-  font-size: 13px;
+.rowWaitUnit {
+  flex-basis: 100%;
+  font-size: 12.5px;
   color: var(--ink-faint);
 }
 
-.cardSecond {
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px solid var(--edge);
-  font-size: 14px;
-  color: var(--ink-dim);
-  font-variant-numeric: tabular-nums;
+/* The badge that follows whichever light is ahead. */
+.fasterPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #0a0f14;
+  background: var(--tone);
+  border-radius: 999px;
+  padding: 4px 11px 4px 9px;
+  white-space: nowrap;
 }
 
-.cardSecond b {
-  color: #e4e9ef;
-  font-weight: 500;
-  font-size: 17px;
+.fasterPill::before {
+  content: "▲";
+  font-size: 9px;
+  line-height: 1;
 }
 
-/* Centre cell: the live gap. */
-.gapCard {
-  background: var(--surface-soft);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  padding: clamp(14px, 1.6vw, 22px) 16px;
+.fasterPill[hidden] {
+  display: none;
+}
+
+.rowCars {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 6px;
-}
-
-.gapLabel {
-  font-size: 11px;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.gapValue {
-  font-size: clamp(30px, 3.8vw, 50px);
-  line-height: 1.02;
-  font-weight: 500;
-  letter-spacing: -0.03em;
+  gap: 2px;
   font-variant-numeric: tabular-nums;
-  color: var(--ink);
 }
 
-.gapValue[data-lead="responsive"] {
-  color: var(--responsive);
+.rowCars b {
+  font-size: clamp(19px, 1.8vw, 23px);
+  font-weight: 500;
+  color: #e4e9ef;
+  line-height: 1.1;
 }
 
-.gapValue[data-lead="fixed"] {
-  color: var(--fixed);
-}
-
-.gapNote {
+.rowCarsUnit {
   font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--ink-dim);
-  max-width: 24ch;
-}
-
-/*
- * The live gap swings: the fixed timer is ahead early on and the responsive
- * signal overtakes it as the queues build. Stating where the clip ends up,
- * permanently and on the same card, stops a visitor who arrives at minute two
- * from reading the wrong conclusion.
- */
-.gapOutcome {
-  margin-top: 8px;
-  padding-top: 9px;
-  border-top: 1px solid var(--edge);
-  width: 100%;
-  font-size: 11.5px;
-  line-height: 1.45;
   color: var(--ink-faint);
 }
 
-.scoreFoot {
-  margin: 10px 2px 0;
+.rowFoot {
+  margin: 0;
+  padding: 11px clamp(16px, 2vw, 26px) 13px;
+  border-top: 1px solid var(--edge);
+  background: var(--surface-soft);
   font-size: 12.5px;
   color: var(--ink-faint);
   line-height: 1.5;
+}
+
+/* --- section furniture --------------------------------------------------------- */
+
+.sectionKicker {
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+
+.sectionTitle {
+  font-size: clamp(22px, 2.4vw, 31px);
+  line-height: 1.16;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #eef2f7;
+}
+
+.sectionLede {
+  margin-top: 10px;
+  font-size: clamp(14.5px, 1.1vw, 16px);
+  line-height: 1.6;
+  color: var(--ink-dim);
+  max-width: 88ch;
+}
+
+.inkFixed {
+  color: var(--fixed);
+  font-weight: 600;
+}
+
+.inkResponsive {
+  color: var(--responsive);
+  font-weight: 600;
 }
 
 /* --- stage -------------------------------------------------------------------- */
@@ -266,6 +373,11 @@
   border-radius: var(--radius);
   overflow: hidden;
   background: #0d1117;
+}
+
+/* The city needs more room: a hundred junctions in half a stage is a smudge. */
+.stageTall {
+  height: clamp(360px, 52vh, 560px);
 }
 
 .canvasHost {
@@ -311,6 +423,81 @@
 .sideTagRight {
   right: 12px;
   --tone: var(--responsive);
+}
+
+/* The winner's badge, repeated over its own half of the picture. */
+.stageFlag {
+  margin-left: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #0a0f14;
+  background: var(--tone);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.stageFlag[hidden] {
+  display: none;
+}
+
+/* --- legend: what the shapes on the screen are --------------------------------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 11px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legendMark {
+  flex: 0 0 auto;
+  display: inline-block;
+}
+
+.legendCar {
+  width: 14px;
+  height: 9px;
+  border-radius: 2px;
+  background: #c9d3de;
+  box-shadow: 0 0 0 1px #454f5c;
+}
+
+.legendStop {
+  width: 16px;
+  height: 9px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #d05a52 0 4px, transparent 4px 6px);
+}
+
+.legendClock {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+}
+
+.legendQueue {
+  width: 16px;
+  height: 9px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #5cc98a, #d8c24a 55%, #d05a52);
+}
+
+.legendCount {
+  color: #e4e9ef;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- loading / error ----------------------------------------------------------- */
@@ -508,6 +695,98 @@
   transition: width 240ms linear;
 }
 
+.btnOn {
+  background: #1c3a33;
+  border-color: var(--responsive);
+  color: #d6f2e7;
+}
+
+.btnOn:hover:not(:disabled) {
+  background: #24483f;
+}
+
+/* --- "what you are looking at" ---------------------------------------------------- */
+
+.explain {
+  margin-top: clamp(28px, 4vw, 46px);
+  padding-top: clamp(20px, 2.6vw, 28px);
+  border-top: 1px solid var(--edge);
+}
+
+.explainTitle {
+  font-size: clamp(18px, 1.8vw, 22px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #eef2f7;
+}
+
+.explainGrid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.explainItem {
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+}
+
+.explainNum {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--edge-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--accent-text);
+  margin-bottom: 10px;
+}
+
+.explainItem h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6ecf3;
+  margin-bottom: 5px;
+}
+
+.explainItem p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+
+.explainItem b {
+  color: #dce3eb;
+  font-weight: 600;
+}
+
+/* --- part two: city scale ---------------------------------------------------------- */
+
+.city {
+  margin-top: clamp(40px, 6vw, 76px);
+  padding-top: clamp(22px, 3vw, 34px);
+  border-top: 1px solid var(--edge-strong);
+  scroll-margin-top: 16px;
+}
+
+.cityHead {
+  max-width: 1040px;
+  margin-bottom: 16px;
+}
+
+.cityHint {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+  max-width: 80ch;
+}
+
 /* --- measured results ------------------------------------------------------------ */
 
 .results {
@@ -666,55 +945,73 @@
 /* --- narrow screens ---------------------------------------------------------------- */
 
 @media (max-width: 860px) {
-  .scoreboard {
-    grid-template-columns: 1fr 1fr;
+  /*
+   * A phone cannot hold four columns, so each light becomes a block: name,
+   * then its big wait number with the winner's badge beside it, then the bar
+   * underneath running the full width. The two bars stay directly above one
+   * another, which is the only thing the comparison actually needs.
+   */
+  .row {
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 13px 14px;
   }
 
-  /* The two sides stay side by side; the gap sits underneath them, never above
-     — the live gap swings early on and must not be the first thing read. */
-  .cardFixed {
+  .rowWho {
     grid-column: 1;
     grid-row: 1;
+    min-width: 0;
   }
 
-  .cardResponsive {
+  .rowName {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .rowWhere {
+    font-size: 11.5px;
+  }
+
+  /* "average wait per driver" is wider than the value it labels, and the whole
+     right-hand cell is sized by it — so it shrinks here to leave the name
+     column enough room to stay on one line. */
+  .rowWaitUnit {
+    font-size: 11px;
+  }
+
+  .rowWait {
     grid-column: 2;
     grid-row: 1;
+    justify-self: end;
+    justify-content: flex-end;
+    text-align: right;
   }
 
-  .gapCard {
+  .rowWaitValue {
+    font-size: clamp(24px, 7vw, 32px);
+  }
+
+  .rowWaitUnit {
+    text-align: right;
+  }
+
+  .barTrack {
     grid-column: 1 / -1;
     grid-row: 2;
+    height: 20px;
+    margin-top: 2px;
+  }
+
+  .rowCars {
+    grid-column: 1 / -1;
+    grid-row: 3;
     flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 12px;
-    padding: 12px 16px;
+    align-items: baseline;
+    gap: 6px;
   }
 
-  .gapLabel {
-    width: 100%;
-  }
-
-  .gapNote {
-    max-width: none;
-  }
-
-  .card {
-    padding: 14px 15px;
-  }
-
-  .cardValue {
-    font-size: clamp(28px, 8.5vw, 40px);
-  }
-
-  .cardUnit,
-  .cardSecond {
-    font-size: 12.5px;
-  }
-
-  .cardSecond b {
-    font-size: 15px;
+  .rowCars b {
+    font-size: 17px;
   }
 
   .stage {
@@ -747,11 +1044,17 @@
     margin-left: 0;
     width: 100%;
   }
+
+  .verdictHead {
+    font-size: clamp(20px, 6.4vw, 26px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .caption,
-  .loadingFill {
+  .loadingFill,
+  .barFill,
+  .verdict::before {
     transition: none;
   }
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import type { RefCallback } from "react";
+import { useCallback, type MutableRefObject, type ReactNode } from "react";
 
-import { CLIP_RESULT } from "@/lib/demo/story";
+import { SIDE_LABELS } from "@/lib/demo/story";
 import styles from "./Demo.module.css";
 
 /**
@@ -15,8 +15,16 @@ export interface LiveHandles {
   wait: [HTMLSpanElement | null, HTMLSpanElement | null];
   /** Cars-through readout, [fixed, responsive]. */
   cars: [HTMLElement | null, HTMLElement | null];
-  gapValue: HTMLSpanElement | null;
-  gapNote: HTMLSpanElement | null;
+  /** Comparison bar fill, [fixed, responsive]. Width is the whole point. */
+  bar: [HTMLDivElement | null, HTMLDivElement | null];
+  /** "Faster" pill on each row; shown only on the side that is ahead. */
+  pill: [HTMLElement | null, HTMLElement | null];
+  /** "Faster" flag on each label over the 3D stage. */
+  stageFlag: [HTMLElement | null, HTMLElement | null];
+  /** The banner box — carries `data-lead` so the whole panel takes the colour. */
+  verdictBox: HTMLElement | null;
+  verdictHead: HTMLElement | null;
+  verdictDetail: HTMLElement | null;
   caption: HTMLParagraphElement | null;
   elapsed: HTMLSpanElement | null;
   trackFill: HTMLDivElement | null;
@@ -26,90 +34,164 @@ export function emptyHandles(): LiveHandles {
   return {
     wait: [null, null],
     cars: [null, null],
-    gapValue: null,
-    gapNote: null,
+    bar: [null, null],
+    pill: [null, null],
+    stageFlag: [null, null],
+    verdictBox: null,
+    verdictHead: null,
+    verdictDetail: null,
     caption: null,
     elapsed: null,
     trackFill: null,
   };
 }
 
-function SideCard({
+/**
+ * One light's row: who it is, how long its drivers have waited drawn as a bar,
+ * and the two numbers behind the bar. Two of these stacked is the comparison —
+ * a visitor reads which bar is shorter without reading a single digit.
+ */
+function Row({
   name,
+  where,
   tone,
-  waitRef,
-  carsRef,
+  side,
+  carsUnit,
+  handles,
 }: {
   name: string;
+  where: string;
   tone: "fixed" | "responsive";
-  waitRef: RefCallback<HTMLSpanElement>;
-  carsRef: RefCallback<HTMLElement>;
+  side: 0 | 1;
+  carsUnit: string;
+  handles: MutableRefObject<LiveHandles>;
 }) {
+  const barRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      handles.current.bar[side] = el;
+    },
+    [handles, side],
+  );
+  const waitRef = useCallback(
+    (el: HTMLSpanElement | null) => {
+      handles.current.wait[side] = el;
+    },
+    [handles, side],
+  );
+  const carsRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.cars[side] = el;
+    },
+    [handles, side],
+  );
+  const pillRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.pill[side] = el;
+    },
+    [handles, side],
+  );
+
   return (
-    <div className={`${styles.card} ${tone === "fixed" ? styles.cardFixed : styles.cardResponsive}`}>
-      <span className={styles.cardLabel}>
-        <span className={styles.dot} />
-        {name}
-      </span>
-      <span ref={waitRef} className={styles.cardValue}>
-        –
-      </span>
-      <span className={styles.cardUnit}>average wait per driver, so far</span>
-      <span className={styles.cardSecond}>
-        <b ref={carsRef}>–</b> cars through the junction
-      </span>
+    <div className={`${styles.row} ${tone === "fixed" ? styles.rowFixed : styles.rowResponsive}`}>
+      <div className={styles.rowWho}>
+        <span className={styles.rowName}>
+          <span className={styles.dot} />
+          {name}
+        </span>
+        <span className={styles.rowWhere}>{where}</span>
+      </div>
+
+      <div className={styles.barTrack}>
+        <div ref={barRef} className={styles.barFill} />
+      </div>
+
+      <div className={styles.rowWait}>
+        <span ref={waitRef} className={styles.rowWaitValue}>
+          –
+        </span>
+        <span ref={pillRef} className={styles.fasterPill} hidden>
+          Faster
+        </span>
+        <span className={styles.rowWaitUnit}>average wait per driver</span>
+      </div>
+
+      <div className={styles.rowCars}>
+        <b ref={carsRef}>–</b>
+        <span className={styles.rowCarsUnit}>{carsUnit}</span>
+      </div>
     </div>
   );
 }
 
 /**
- * The focal point of the page: what each light has cost its drivers so far, and
- * the gap between them right now. Nothing here holds state — the caller owns
- * the elements and writes their text from the render loop.
+ * The focal point of the page: a one-line verdict on which light is currently
+ * ahead, and two bars whose lengths say the same thing without words. Nothing
+ * here holds state — the caller owns the elements and writes them from the
+ * render loop.
+ *
+ * Both comparisons on the page use this, the one junction and the hundred, so
+ * a visitor who has learnt to read it once has learnt to read it twice.
  */
 export default function Scoreboard({
-  fixedName,
-  responsiveName,
-  waitRefA,
-  carsRefA,
-  waitRefB,
-  carsRefB,
-  gapValueRef,
-  gapNoteRef,
+  handles,
+  carsUnit = "cars through so far",
+  foot,
 }: {
-  fixedName: string;
-  responsiveName: string;
-  waitRefA: RefCallback<HTMLSpanElement>;
-  carsRefA: RefCallback<HTMLElement>;
-  waitRefB: RefCallback<HTMLSpanElement>;
-  carsRefB: RefCallback<HTMLElement>;
-  gapValueRef: RefCallback<HTMLSpanElement>;
-  gapNoteRef: RefCallback<HTMLSpanElement>;
+  handles: MutableRefObject<LiveHandles>;
+  carsUnit?: string;
+  foot: ReactNode;
 }) {
+  const boxRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.verdictBox = el;
+    },
+    [handles],
+  );
+  const headRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.verdictHead = el;
+    },
+    [handles],
+  );
+  const detailRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.verdictDetail = el;
+    },
+    [handles],
+  );
+
   return (
-    <>
-      <section className={styles.scoreboard} aria-label="Live comparison">
-        <SideCard name={fixedName} tone="fixed" waitRef={waitRefA} carsRef={carsRefA} />
-        <div className={styles.gapCard}>
-          <span className={styles.gapLabel}>Difference right now</span>
-          <span ref={gapValueRef} className={styles.gapValue}>
-            –
-          </span>
-          <span ref={gapNoteRef} className={styles.gapNote}>
-            Waiting for the first cars
-          </span>
-          <span className={styles.gapOutcome}>
-            By the end of the clip:
-            <br />
-            responsive signal, {CLIP_RESULT.waitReductionPct}% less waiting
-          </span>
-        </div>
-        <SideCard name={responsiveName} tone="responsive" waitRef={waitRefB} carsRef={carsRefB} />
-      </section>
-      <p className={styles.scoreFoot}>
-        Both figures are running averages over everything that has happened since the clip started,
-        so the two sides begin close together and pull apart as the queues build.
-      </p>
-    </>
+    <section className={styles.scoreboard} aria-label="Which light is faster right now">
+      <div ref={boxRef} className={styles.verdict} data-lead="unknown">
+        <span className={styles.verdictKicker}>Right now</span>
+        <strong ref={headRef} className={styles.verdictHead}>
+          Waiting for the first cars
+        </strong>
+        <span ref={detailRef} className={styles.verdictDetail}>
+          The comparison starts the moment traffic reaches the junction.
+        </span>
+      </div>
+
+      <div className={styles.rows}>
+        <Row
+          name={SIDE_LABELS.fixed}
+          where="Left side"
+          tone="fixed"
+          side={0}
+          carsUnit={carsUnit}
+          handles={handles}
+        />
+        <Row
+          name={SIDE_LABELS.responsive}
+          where="Right side"
+          tone="responsive"
+          side={1}
+          carsUnit={carsUnit}
+          handles={handles}
+        />
+      </div>
+
+      <p className={styles.rowFoot}>{foot}</p>
+    </section>
   );
 }

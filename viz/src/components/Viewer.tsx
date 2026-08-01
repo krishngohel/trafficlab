@@ -323,10 +323,10 @@ export default function Viewer() {
             </button>
             <button
               className={styles.button}
-              onClick={() => loadDemo("grid4x4_demo.traj")}
-              title="4×4 grid under heavy demand — ~1500 vehicles, the performance reference"
+              onClick={() => loadDemo("metro.traj")}
+              title="100 signalised intersections under adaptive control — the full simulator at scale"
             >
-              4×4 grid
+              100-intersection city
             </button>
             <button
               className={styles.button}

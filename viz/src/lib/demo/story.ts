@@ -17,10 +17,13 @@ export const REPO_URL = "https://github.com/krishngohel/trafficlab";
  */
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-/** Where the two fixtures live under `public/`. */
+/** Where the fixtures live under `public/`. */
 export const FIXTURES = {
   fixed: `${BASE_PATH}/fixtures/demo_fixed.traj`,
   responsive: `${BASE_PATH}/fixtures/demo_actuated.traj`,
+  /** The city-scale pair. 35 MB together, fetched only when asked for. */
+  cityFixed: `${BASE_PATH}/fixtures/metro_fixed.traj`,
+  cityResponsive: `${BASE_PATH}/fixtures/metro_actuated.traj`,
 } as const;
 
 export const SIDE_LABELS = {
@@ -46,6 +49,53 @@ export const CLIP_RESULT = {
   waitReductionPct: 19,
   fixedCars: 348,
   responsiveCars: 418,
+} as const;
+
+/**
+ * The city-scale pair, `public/fixtures/metro_{fixed,actuated}.traj`.
+ *
+ * Same network, same demand, same seed (3), same five recorded minutes after
+ * the same five-minute warm-up — the single-junction comparison repeated at a
+ * hundred signalised crossings at once. Shape facts are read off the files:
+ * 100 entries in `intersections_order`, 600 frames at dt 0.5 s, 18.0 MB and
+ * 16.1 MB on disk.
+ */
+export const METRO = {
+  intersections: 100,
+  minutes: 5,
+  /** Download size of both files together, MiB. */
+  megabytes: 33,
+  /** Grid spacing in metres, from `configs/networks/metro.json`. */
+  spacingMeters: 220,
+} as const;
+
+/**
+ * What the two city runs cost their drivers. Measured, and reproducible with
+ *
+ *   python scripts/simulate.py --network metro --demand metro \
+ *     --controller {fixed,actuated} --duration 300 --seed 3 --warmup 300
+ *
+ * which prints, for fixed: 1981 spawned, delay 202652 veh·s, 1154 still on the
+ * map at the end; for actuated: 1912 spawned, delay 163129 veh·s, 983 still on
+ * the map. So `waitSeconds` is total delay over EVERY driver the run created
+ * (202652/1981 = 102.3, 163129/1912 = 85.3) and `carsCleared` is every driver
+ * who finished (1981-1154 = 827, 1912-983 = 929).
+ *
+ * IMPORTANT — the live counter on the page is not computing this number. A
+ * .traj file records how many drivers are on the map and how many finished at
+ * the roadside, but not how many finished by parking off-street, so the
+ * browser divides the same total delay by a smaller count and reads a little
+ * high (1m 55s against 1m 37s at the end of the clip, a 16% gap rather than
+ * this 17% one). The page says so rather than hiding it.
+ */
+export const CITY_RESULT = {
+  minutes: 5,
+  fixedWaitSeconds: 102,
+  responsiveWaitSeconds: 85,
+  waitReductionPct: 17,
+  fixedCars: 827,
+  responsiveCars: 929,
+  extraCars: 102,
 } as const;
 
 /** The rigorous figures: ten full one-hour runs per light. */

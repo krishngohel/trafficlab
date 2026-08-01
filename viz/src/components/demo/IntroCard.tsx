@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { CLIP_RESULT, SIDE_LABELS } from "@/lib/demo/story";
+import { CLIP_RESULT, METRO, SIDE_LABELS } from "@/lib/demo/story";
 import { formatClock } from "@/lib/demo/format";
 import styles from "./Demo.module.css";
 
@@ -26,9 +26,9 @@ export default function IntroCard({ onDismiss }: { onDismiss: () => void }) {
         <h2 className={styles.introTitle}>The same ten minutes, twice</h2>
         <div className={styles.introBody}>
           <p>
-            You are about to watch one busy junction, simulated twice. Both runs get the{" "}
-            <strong>same cars, the same drivers and the same arrivals, to the second</strong>. The
-            only thing that differs is how the traffic light makes up its mind.
+            You are about to watch one busy junction, simulated twice, side by side. Both runs get
+            the <strong>same cars, the same drivers and the same arrivals, to the second</strong>.
+            The only thing that differs is how the traffic light makes up its mind.
           </p>
           <div className={styles.introSplit}>
             <div
@@ -60,7 +60,8 @@ export default function IntroCard({ onDismiss }: { onDismiss: () => void }) {
           Watch it
         </button>
         <p className={styles.introFoot}>
-          The numbers on the page are read live out of the simulation as it plays.
+          The numbers on the page are read live out of the simulation as it plays. Further down,
+          the same responsive light runs at {METRO.intersections} junctions at once.
         </p>
       </div>
     </div>

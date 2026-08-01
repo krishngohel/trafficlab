@@ -4,35 +4,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import {
-  captionIndexAt,
   CAPTIONS,
   CLIP_RESULT,
   FIXTURES,
+  METRO,
   REPO_URL,
   SIDE_LABELS,
   STUDY_RESULT,
 } from "@/lib/demo/story";
-import {
-  describeGap,
-  formatClock,
-  formatCount,
-  formatElapsed,
-  formatPercent,
-  waitGap,
-} from "@/lib/demo/format";
+import { formatClock } from "@/lib/demo/format";
 import { fetchWithProgress, formatBytes, loadPercent } from "@/lib/demo/load";
 import { VizEngine } from "@/lib/viz/engine";
-import { hasWaitColumns, meanWaitAt } from "@/lib/wait";
+import CityScale from "./CityScale";
 import IntroCard from "./IntroCard";
 import Scoreboard, { emptyHandles } from "./Scoreboard";
+import { useLiveCompare } from "./useLiveCompare";
 import styles from "./Demo.module.css";
 
 /** Ten minutes of traffic is a long watch at 1x. */
 const SPEEDS = [4, 8, 16] as const;
 const DEFAULT_SPEED = 8;
-
-/** Scoreboard refresh cap (5 Hz) — the numbers move far slower than the frame rate. */
-const REFRESH_MS = 200;
 
 /** Below this the split view is cramped and touch drags must scroll the page. */
 const NARROW_PX = 860;
@@ -57,6 +48,9 @@ export default function Demo() {
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState<number>(DEFAULT_SPEED);
 
+  const ready = stage === "ready";
+  useLiveCompare(engine, ready, live, { captions: true });
+
   // --- engine + fixture loading ------------------------------------------------
   useEffect(() => {
     const host = hostRef.current;
@@ -70,7 +64,7 @@ export default function Demo() {
     const showProgress = () => {
       // Before Content-Length is known for both files, fall back to the
       // fixtures' real on-disk size so the bar never sits at zero.
-      const total = totals[0] + totals[1] || 7_600_000;
+      const total = totals[0] + totals[1] || 10_100_000;
       const loaded = bytes[0] + bytes[1];
       if (loadBar.current) loadBar.current.style.width = `${loadPercent(loaded, total).toFixed(1)}%`;
       if (loadHint.current) {
@@ -116,64 +110,6 @@ export default function Demo() {
     };
   }, []);
 
-  // --- live readout (no React renders while playing) ------------------------------
-  useEffect(() => {
-    if (!engine || stage !== "ready") return;
-    let last = 0;
-    let captionIndex = -1;
-
-    const write = (el: HTMLElement | null, text: string) => {
-      if (el && el.textContent !== text) el.textContent = text;
-    };
-
-    const sync = () => {
-      const now = performance.now();
-      if (now - last < REFRESH_MS) return;
-      last = now;
-
-      const h = live.current;
-      const clock = engine.clock;
-      const views = [engine.getView(0), engine.getView(1)];
-      const wait: [number, number] = [NaN, NaN];
-
-      for (let side = 0; side < 2; side++) {
-        const view = views[side];
-        if (!view) continue;
-        if (hasWaitColumns(view.waitCols)) {
-          wait[side] = meanWaitAt(
-            view.scan.metrics,
-            view.scan.m,
-            view.waitCols,
-            view.frameIndexAt(clock),
-          );
-        }
-        write(h.wait[side], formatClock(wait[side]));
-        write(h.cars[side], formatCount(view.metricAt(clock, view.throughputCol)));
-      }
-
-      const gap = waitGap(wait[0], wait[1]);
-      write(h.gapValue, formatPercent(gap.pct));
-      if (h.gapValue && h.gapValue.dataset.lead !== gap.leader) h.gapValue.dataset.lead = gap.leader;
-      write(h.gapNote, describeGap(gap));
-
-      const index = captionIndexAt(clock.time);
-      if (index !== captionIndex) {
-        captionIndex = index;
-        write(h.caption, CAPTIONS[index].text);
-      }
-
-      write(h.elapsed, formatElapsed(clock.time, clock.duration));
-      if (h.trackFill) {
-        h.trackFill.style.width = `${loadPercent(clock.time, clock.duration).toFixed(2)}%`;
-      }
-    };
-
-    engine.afterFrame.add(sync);
-    return () => {
-      engine.afterFrame.delete(sync);
-    };
-  }, [engine, stage]);
-
   // --- controls -------------------------------------------------------------------
   const togglePlay = useCallback(() => {
     if (!engine) return;
@@ -203,24 +139,6 @@ export default function Demo() {
   }, [engine]);
 
   // --- element plumbing ---------------------------------------------------------------
-  const waitRefA = useCallback((el: HTMLSpanElement | null) => {
-    live.current.wait[0] = el;
-  }, []);
-  const waitRefB = useCallback((el: HTMLSpanElement | null) => {
-    live.current.wait[1] = el;
-  }, []);
-  const carsRefA = useCallback((el: HTMLElement | null) => {
-    live.current.cars[0] = el;
-  }, []);
-  const carsRefB = useCallback((el: HTMLElement | null) => {
-    live.current.cars[1] = el;
-  }, []);
-  const gapValueRef = useCallback((el: HTMLSpanElement | null) => {
-    live.current.gapValue = el;
-  }, []);
-  const gapNoteRef = useCallback((el: HTMLSpanElement | null) => {
-    live.current.gapNote = el;
-  }, []);
   const captionRef = useCallback((el: HTMLParagraphElement | null) => {
     live.current.caption = el;
   }, []);
@@ -230,8 +148,12 @@ export default function Demo() {
   const trackRef = useCallback((el: HTMLDivElement | null) => {
     live.current.trackFill = el;
   }, []);
-
-  const ready = stage === "ready";
+  const flagRefA = useCallback((el: HTMLElement | null) => {
+    live.current.stageFlag[0] = el;
+  }, []);
+  const flagRefB = useCallback((el: HTMLElement | null) => {
+    live.current.stageFlag[1] = el;
+  }, []);
 
   return (
     <div className={styles.page}>
@@ -239,6 +161,7 @@ export default function Demo() {
         <header className={styles.topbar}>
           <span className={styles.mark}>trafficlab</span>
           <nav className={styles.topLinks}>
+            <a href="#city">See it at city scale</a>
             <Link href="/studio" prefetch={false}>Open the research tool</Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer">
               Source on GitHub
@@ -247,25 +170,29 @@ export default function Demo() {
         </header>
 
         <div className={styles.head}>
+          <div className={styles.sectionKicker}>Part one · one junction, two lights</div>
           <h1 className={styles.title}>
-            One junction. Two traffic lights. The same ten minutes.
+            A traffic light that watches the traffic clears the same junction{" "}
+            <em>{CLIP_RESULT.waitReductionPct}% faster</em>.
           </h1>
           <p className={styles.lede}>
-            Both sides below get identical traffic: the same cars, arriving at the same second. On
-            the left the light runs to a fixed schedule. On the right it senses the cars waiting and
-            changes when they need it to. Everything else is the same.
+            Below is one busy junction, simulated twice over the same ten minutes. Both runs get the
+            same cars arriving at the same second. On the <b className={styles.inkFixed}>left</b> the
+            light runs to a fixed schedule; on the <b className={styles.inkResponsive}>right</b> it
+            senses the cars waiting and changes when they need it to. Nothing else differs.
           </p>
         </div>
 
         <Scoreboard
-          fixedName={SIDE_LABELS.fixed}
-          responsiveName={SIDE_LABELS.responsive}
-          waitRefA={waitRefA}
-          carsRefA={carsRefA}
-          waitRefB={waitRefB}
-          carsRefB={carsRefB}
-          gapValueRef={gapValueRef}
-          gapNoteRef={gapNoteRef}
+          handles={live}
+          foot={
+            <>
+              Longer bar means longer waiting. Both figures are running averages over everything
+              since the clip started, so they climb as the queues build. By the end of these{" "}
+              {CLIP_RESULT.minutes} minutes the responsive signal finishes{" "}
+              {CLIP_RESULT.waitReductionPct}% ahead.
+            </>
+          }
         />
 
         <div className={styles.stage}>
@@ -276,10 +203,16 @@ export default function Demo() {
               <span className={`${styles.sideTag} ${styles.sideTagLeft}`}>
                 <span className={styles.dot} />
                 {SIDE_LABELS.fixed}
+                <b ref={flagRefA} className={styles.stageFlag} hidden>
+                  Faster
+                </b>
               </span>
               <span className={`${styles.sideTag} ${styles.sideTagRight}`}>
                 <span className={styles.dot} />
                 {SIDE_LABELS.responsive}
+                <b ref={flagRefB} className={styles.stageFlag} hidden>
+                  Faster
+                </b>
               </span>
             </>
           )}
@@ -302,6 +235,21 @@ export default function Demo() {
               )}
             </div>
           )}
+        </div>
+
+        <div className={styles.legend}>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendMark} ${styles.legendCar}`} />
+            Every little box is one car, driving the route it was given.
+          </span>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendMark} ${styles.legendStop}`} />
+            A line of stopped cars is a queue — that is people waiting.
+          </span>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendMark} ${styles.legendClock}`} />
+            Playing at {speed}× real time: ten minutes takes about {Math.round(600 / speed)} seconds.
+          </span>
         </div>
 
         <p ref={captionRef} className={styles.caption}>
@@ -339,6 +287,39 @@ export default function Demo() {
           </div>
         </div>
 
+        <section className={styles.explain} aria-label="How to read this">
+          <h2 className={styles.explainTitle}>What you are looking at</h2>
+          <div className={styles.explainGrid}>
+            <div className={styles.explainItem}>
+              <div className={styles.explainNum}>1</div>
+              <h3>Two copies of one junction</h3>
+              <p>
+                Left and right are the same crossroads, the same map, the same drivers, replayed
+                side by side. Watch one car on the left and its twin is doing the identical trip on
+                the right, until a light treats them differently.
+              </p>
+            </div>
+            <div className={styles.explainItem}>
+              <div className={styles.explainNum}>2</div>
+              <h3>Queues are the story</h3>
+              <p>
+                When a light gives green to an empty road, the cars stacked up on the other road
+                keep waiting. So the side whose queues stay shorter is the side whose light is
+                paying attention.
+              </p>
+            </div>
+            <div className={styles.explainItem}>
+              <div className={styles.explainNum}>3</div>
+              <h3>What the numbers count</h3>
+              <p>
+                <b>Average wait</b> is the time an average driver has lost sitting still, added up
+                since the clip began. <b>Cars through</b> is how many have finished their trip.
+                Lower wait and more cars through at the same time is the whole prize.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className={styles.results}>
           <div className={styles.resultCard}>
             <div className={styles.resultKicker}>The clip above</div>
@@ -366,13 +347,17 @@ export default function Demo() {
           </div>
         </section>
 
+        <CityScale />
+
         <p className={styles.smallprint}>
           The responsive light is not artificial intelligence and there is no machine learning in
           it. It is a piece of classical engineering that has been in the ground for decades: a
           detector at the stop line, and a rule about when to let the green run on. This project
           also built controllers that learn from experience, and they did not beat it. Everything
           you see is a simulation — real junctions bring pedestrians, buses, breakdowns and weather
-          that this model does not.
+          that this model does not. Every figure on this page, including the{" "}
+          {METRO.intersections}-junction one, comes from recordings you can regenerate from the
+          source with a seed and a command.
         </p>
 
         <footer className={styles.footer}>

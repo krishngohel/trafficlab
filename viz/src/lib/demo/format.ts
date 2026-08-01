@@ -86,6 +86,72 @@ export function describeGap(gap: WaitGap): string {
   }
 }
 
+/** The banner that answers "which one is faster?" without any arithmetic. */
+export interface Verdict {
+  leader: Leader;
+  /** Six words at most — the thing read in the first second. */
+  headline: string;
+  /** One plain sentence with the size of the lead in it. */
+  detail: string;
+}
+
+/**
+ * Turn the live gap into the sentence at the top of the page. Deliberately
+ * symmetric: if the fixed timer were ahead it would say so in the same words,
+ * because the banner is read straight off the simulation rather than asserted.
+ */
+export function verdict(gap: WaitGap): Verdict {
+  const by = formatClock(Math.abs(gap.seconds));
+  const pct = formatPercent(gap.pct);
+  switch (gap.leader) {
+    case "unknown":
+      return {
+        leader: gap.leader,
+        headline: "Waiting for the first cars",
+        detail: "The comparison starts the moment traffic reaches the junction.",
+      };
+    case "even":
+      return {
+        leader: gap.leader,
+        headline: "Neck and neck",
+        detail: "So far both lights are costing drivers about the same wait.",
+      };
+    case "responsive":
+      return {
+        leader: gap.leader,
+        headline: "The responsive signal is winning",
+        detail: `Drivers on the right have waited ${by} less each — ${pct} less than the left.`,
+      };
+    case "fixed":
+      return {
+        leader: gap.leader,
+        headline: "The fixed timer is winning",
+        detail: `Drivers on the left have waited ${by} less each — ${pct} less than the right.`,
+      };
+  }
+}
+
+/** Shortest bar that is still visibly a bar, in percent of the track. */
+const MIN_BAR_PCT = 2;
+
+/**
+ * Bar lengths for the side-by-side comparison, as percentages of the track.
+ * The longer wait always fills the track, so the two bars can be compared by
+ * eye alone — that is the whole point of drawing them. Non-finite input gives
+ * an empty bar rather than a misleading full one.
+ */
+export function waitBars(fixed: number, responsive: number): { fixed: number; responsive: number } {
+  const ok = (v: number) => Number.isFinite(v) && v >= 0;
+  if (!ok(fixed) && !ok(responsive)) return { fixed: 0, responsive: 0 };
+  const peak = Math.max(ok(fixed) ? fixed : 0, ok(responsive) ? responsive : 0);
+  const share = (v: number) => {
+    if (!ok(v)) return 0;
+    if (peak <= 0) return MIN_BAR_PCT;
+    return Math.max(MIN_BAR_PCT, Math.min(100, (v / peak) * 100));
+  };
+  return { fixed: share(fixed), responsive: share(responsive) };
+}
+
 /** "3:20 of 10:00" — where the clip has got to, in minutes and seconds. */
 export function formatElapsed(seconds: number, duration: number): string {
   const stamp = (v: number) => {

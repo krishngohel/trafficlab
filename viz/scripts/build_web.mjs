@@ -12,15 +12,19 @@ import { readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Fixtures the public build ships: the two the guided demo plays, plus the
- * three the research tool's own demo buttons offer. Anything referenced by a
- * shipped button has to be here or that button 404s in production.
+ * Fixtures the public build ships: the four the guided demo plays (one
+ * junction under both lights, then a hundred junctions under both lights),
+ * plus the three the research tool's own demo buttons offer. Anything
+ * referenced by a shipped button has to be here or that button 404s in
+ * production. `metro.traj` is the research tool's button, not the demo's.
  */
 const KEEP = new Set([
   "demo_fixed.traj",
   "demo_actuated.traj",
+  "metro_fixed.traj",
+  "metro_actuated.traj",
   "city.traj",
-  "grid4x4_demo.traj",
+  "metro.traj",
   "single_actuated.traj",
 ]);
 

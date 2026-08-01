@@ -17,20 +17,27 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 OUT = ROOT / "viz" / "public" / "fixtures"
 
-# (fixture name, network, demand, controller, seconds, seed)
+# (fixture name, network, demand, controller, seconds, seed, warmup)
 FIXTURES = [
     # The headline demo: 25 intersections, mixed 1/2/3-lane streets, and
     # off-street trip ends — cars pull out of garages and park in them rather
     # than appearing and vanishing at the map edge. `city` demand carries the
     # parking block; `light` on the same network is the opt-in control.
-    ("city.traj", "city", "city", "actuated", 900.0, 3),
-    # Perf reference: 4x4 grid driven into heavy congestion (~1500 vehicles).
-    ("grid4x4_demo.traj", "grid4x4", "heavy", "max_pressure", 900.0, 7),
+    ("city.traj", "city", "city", "actuated", 900.0, 3, 0.0),
+    # The simulator at scale: 100 signalised intersections, all actively
+    # controlled, recorded after a warm-up so it opens already busy.
+    ("metro.traj", "metro", "metro", "actuated", 600.0, 3, 300.0),
+    # The public demo's second half: the same city under both lights, same
+    # seed, same warm-up, so the split-screen comparison at one junction can be
+    # repeated at a hundred. Five minutes rather than ten keeps the pair to the
+    # same download as the solo recording above.
+    ("metro_fixed.traj", "metro", "metro", "fixed", 300.0, 3, 300.0),
+    ("metro_actuated.traj", "metro", "metro", "actuated", 300.0, 3, 300.0),
     # One intersection, close enough to watch individual car behaviour, and the
     # same seed under two policies so split-screen comparison has something to
     # compare.
-    ("single_actuated.traj", "single", "rush", "actuated", 900.0, 0),
-    ("single_fixed.traj", "single", "rush", "fixed", 900.0, 0),
+    ("single_actuated.traj", "single", "rush", "actuated", 900.0, 0, 0.0),
+    ("single_fixed.traj", "single", "rush", "fixed", 900.0, 0, 0.0),
 ]
 
 
@@ -50,13 +57,13 @@ def main() -> None:
     if not (ROOT / "configs/networks/city.json").exists():
         run(["scripts/make_city.py"])
 
-    for name, network, demand, controller, seconds, seed in FIXTURES:
+    for name, network, demand, controller, seconds, seed, warmup in FIXTURES:
         target = OUT / name
         print(f"{name}: {network}/{demand}/{controller} seed={seed}")
         run([
             "scripts/simulate.py", "--network", network, "--demand", demand,
             "--controller", controller, "--duration", str(seconds),
-            "--seed", str(seed), "--out", str(target),
+            "--seed", str(seed), "--warmup", str(warmup), "--out", str(target),
         ])
         errors = validate_file(target)
         if errors:
@@ -76,6 +83,13 @@ def main() -> None:
     # (24 recycled vehicles, through-movements only, zero acceleration). It
     # exists so the TypeScript parser/scan tests have a fixture to run against,
     # and it is deliberately absent from the viewer's demo buttons.
+    for kind in ("fixed", "actuated"):
+        target = OUT / f"demo_{kind}.traj"
+        print(f"demo_{kind}.traj: single/heavy/{kind} warmup=300 seed=0")
+        run(["scripts/simulate.py", "--network", "single", "--demand", "heavy",
+             "--controller", kind, "--warmup", "300", "--duration", "600",
+             "--seed", "0", "--out", str(target)])
+
     from trafficlab.synthetic import write_synthetic
     write_synthetic(OUT / "synthetic.traj", num_frames=480, seed=42)
     print("synthetic.traj: written (parser test fixture, not a demo)")
