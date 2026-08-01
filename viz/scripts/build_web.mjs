@@ -12,13 +12,15 @@ import { readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Fixtures the public build ships: the four the guided demo plays (one
- * junction under both lights, then a hundred junctions under both lights),
- * plus the three the research tool's own demo buttons offer. Anything
- * referenced by a shipped button has to be here or that button 404s in
- * production. `metro.traj` is the research tool's button, not the demo's.
+ * Fixtures the public build ships: the five the guided demo plays (the leading
+ * clip whose light changes hands halfway through, one junction under both
+ * lights side by side, then a hundred junctions under both lights), plus the
+ * three the research tool's own demo buttons offer. Anything referenced by a
+ * shipped button has to be here or that button 404s in production.
+ * `metro.traj` is the research tool's button, not the demo's.
  */
 const KEEP = new Set([
+  "switch.traj",
   "demo_fixed.traj",
   "demo_actuated.traj",
   "metro_fixed.traj",

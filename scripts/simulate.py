@@ -49,6 +49,13 @@ def main() -> None:
                     help="seconds to run BEFORE recording starts, so the "
                          "recording opens on a network already carrying "
                          "traffic instead of an empty one")
+    ap.add_argument("--switch-at", type=float, default=None,
+                    help="seconds INTO THE RECORDING at which to hand the "
+                         "signals over to --switch-to. Lets one recording show "
+                         "the before and the after on the same junction, so a "
+                         "viewer watches the wait come down rather than having "
+                         "to compare two runs.")
+    ap.add_argument("--switch-to", default="actuated")
     args = ap.parse_args()
 
     net = Network.from_config(load_json("networks", args.network))
@@ -77,9 +84,14 @@ def main() -> None:
     if args.out:
         sim.attach_writer(args.out, policy=args.controller)
     ticks = int(round(args.duration / sim.dt))
+    switch_tick = (int(round(args.switch_at / sim.dt))
+                   if args.switch_at is not None else None)
     t0 = time.perf_counter()
     steps = 0
-    for _ in range(ticks):
+    for tk in range(ticks):
+        if switch_tick is not None and tk == switch_tick:
+            controllers = build_controllers(sim, args.switch_to)
+            print(f"  switched to {args.switch_to} at {args.switch_at:.0f}s")
         for c in controllers:
             c.step()
         sim.step()

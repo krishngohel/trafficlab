@@ -810,7 +810,8 @@
   margin-bottom: 10px;
 }
 
-.explainItem h3 {
+.explainItem h3,
+.explainItem h4 {
   font-size: 15px;
   font-weight: 600;
   color: #e6ecf3;
@@ -828,7 +829,209 @@
   font-weight: 600;
 }
 
-/* --- part two: city scale ---------------------------------------------------------- */
+/* --- part one: the reading that falls -------------------------------------------- */
+
+/*
+ * The lead section. Its panel is deliberately built like the scoreboard below
+ * so a visitor who learns to read one has learnt to read the other, but the
+ * number in it is a trailing-window rate rather than a running total: it goes
+ * down when the light gets better, which is the whole reason this section is
+ * first. See lib/demo/rolling.ts.
+ */
+.falls {
+  scroll-margin-top: 16px;
+}
+
+.waitPanel {
+  position: relative;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  overflow: hidden;
+  padding: clamp(16px, 2vw, 24px) clamp(16px, 2vw, 26px) clamp(15px, 1.8vw, 22px)
+    clamp(20px, 2.2vw, 30px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  align-items: center;
+  gap: clamp(16px, 2.4vw, 40px);
+  --tone: var(--fixed);
+}
+
+.waitPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--tone);
+  transition: background 240ms ease;
+}
+
+.waitPanel[data-light="fixed"] {
+  --tone: var(--fixed);
+}
+
+.waitPanel[data-light="responsive"] {
+  --tone: var(--responsive);
+}
+
+.waitMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The largest thing on the page, and the one that has to come down. */
+.waitValue {
+  font-size: clamp(46px, 6.4vw, 88px);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.038em;
+  font-variant-numeric: tabular-nums;
+  color: var(--tone);
+  transition: color 240ms ease;
+}
+
+/* Appears only once the handover has happened, so the live number has the
+   light it replaced to be read against. */
+.waitBench {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fixed);
+}
+
+.waitBench[hidden] {
+  display: none;
+}
+
+.waitAside {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: clamp(14px, 1.8vw, 26px);
+  border-left: 1px solid var(--edge);
+  min-width: 0;
+}
+
+.waitAsideValue {
+  font-size: clamp(22px, 2.2vw, 30px);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.026em;
+  color: var(--tone);
+  transition: color 240ms ease;
+}
+
+.waitCleared {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--edge);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.waitCleared b {
+  font-size: 17px;
+  font-weight: 600;
+  color: #e4e9ef;
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+/* --- the chart --------------------------------------------------------------------- */
+
+.sparkWrap {
+  margin: 12px 0 0;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 10px 12px 8px;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 168px;
+}
+
+.sparkFoot {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  max-width: 92ch;
+}
+
+/* The moment itself, called out over the picture as it happens. */
+.switchBanner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--responsive);
+  color: #08110d;
+  border-radius: 999px;
+  padding: 6px 15px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  animation: bannerIn 240ms ease-out;
+}
+
+.switchBanner[hidden] {
+  display: none;
+}
+
+@keyframes bannerIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* One view, so its tag takes the colour of whichever light is running. */
+.sideTagSolo[data-light="fixed"] {
+  --tone: var(--fixed);
+}
+
+.sideTagSolo[data-light="responsive"] {
+  --tone: var(--responsive);
+}
+
+.sideTagSolo b {
+  font-weight: 500;
+}
+
+.fallsNote {
+  margin-top: 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+  max-width: 92ch;
+}
+
+/* --- part two: the side-by-side ----------------------------------------------------- */
+
+.compare {
+  margin-top: clamp(40px, 6vw, 76px);
+  padding-top: clamp(22px, 3vw, 34px);
+  border-top: 1px solid var(--edge-strong);
+  scroll-margin-top: 16px;
+}
+
+/* --- part three: city scale -------------------------------------------------------- */
 
 .city {
   margin-top: clamp(40px, 6vw, 76px);
@@ -1144,6 +1347,45 @@
   .heroAsideValue {
     font-size: 26px;
   }
+
+  /* Same treatment for the leading panel: the falling number first and biggest,
+     then which light is running it as its own block underneath. */
+  .waitPanel {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 16px 14px 16px 18px;
+  }
+
+  .waitValue {
+    font-size: clamp(42px, 13vw, 60px);
+  }
+
+  .waitAside {
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: none;
+    border-top: 1px solid var(--edge);
+  }
+
+  .waitAsideValue {
+    font-size: 22px;
+  }
+
+  /* A phone has half the width for the same ten minutes, so the line needs the
+     height back to keep the step readable. */
+  .spark {
+    height: 150px;
+  }
+
+  .sparkWrap {
+    padding: 8px 8px 6px;
+  }
+
+  .switchBanner {
+    font-size: 11.5px;
+    padding: 5px 11px;
+    top: 8px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1152,7 +1394,14 @@
   .barFill,
   .heroValue,
   .heroAsideValue,
-  .hero::before {
+  .hero::before,
+  .waitValue,
+  .waitAsideValue,
+  .waitPanel::before {
     transition: none;
+  }
+
+  .switchBanner {
+    animation: none;
   }
 }

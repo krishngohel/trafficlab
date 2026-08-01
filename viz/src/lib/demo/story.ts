@@ -19,6 +19,8 @@ export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 /** Where the fixtures live under `public/`. */
 export const FIXTURES = {
+  /** The leading clip: ONE junction that changes light halfway through. */
+  switch: `${BASE_PATH}/fixtures/switch.traj`,
   fixed: `${BASE_PATH}/fixtures/demo_fixed.traj`,
   responsive: `${BASE_PATH}/fixtures/demo_actuated.traj`,
   /** The city-scale pair. 35 MB together, fetched only when asked for. */
@@ -29,6 +31,103 @@ export const FIXTURES = {
 export const SIDE_LABELS = {
   fixed: "Fixed timer",
   responsive: "Responsive signal",
+} as const;
+
+/**
+ * The recording the page now opens on: `public/fixtures/switch.traj`.
+ *
+ * ONE junction, ONE continuous ten-minute run, heavy traffic throughout, seed 0,
+ * recorded after a five-minute warm-up so it opens on a junction already
+ * carrying traffic. The light runs a fixed timer for the first five minutes;
+ * at exactly 5:00 a responsive controller takes the same junction over
+ * mid-flow, with the same drivers still arriving. Reproduce with
+ *
+ *   python scripts/simulate.py --network single --demand heavy \
+ *     --controller fixed --switch-at 300 --switch-to actuated \
+ *     --warmup 300 --duration 600 --seed 0 --out viz/public/fixtures/switch.traj
+ *
+ * This clip exists because a page about reducing waiting had nothing on it that
+ * ever went down. A side-by-side of two runs is the stronger experiment, but it
+ * asks a visitor to subtract one number from another; a single junction whose
+ * waiting visibly falls when the light changes does not.
+ *
+ * The first five minutes of this file are not merely similar to
+ * `demo_fixed.traj`, they are the same simulation: same network, same demand,
+ * same seed, and identical metrics frame for frame up to the handover. A test
+ * pins that, which is what licenses the counterfactual quoted below.
+ */
+export const SWITCH_CLIP = {
+  minutes: 10,
+  /** Seconds into the clip at which the responsive controller takes over. */
+  switchAtSeconds: 300,
+  /** On-disk size of the recording, bytes — the loading bar's fallback total. */
+  bytes: 5_175_961,
+  seed: 0,
+} as const;
+
+/**
+ * What the leading clip measures, all of it read off `switch.traj` itself.
+ *
+ * The live reading is a trailing 60-second window: the waiting the junction
+ * generated in that minute divided by the drivers who cleared it in that same
+ * minute (see `lib/demo/rolling.ts` for why that is the one statistic here that
+ * can fall). It is noisy by construction — a minute is roughly 35 finishing
+ * drivers — so the page quotes averages over many windows and says so, and no
+ * single window is ever presented as the result.
+ *
+ * WINDOW FAMILY. Averaged over every 60-second window lying entirely inside one
+ * regime (windows ending 60 s–300 s for the timer, 360 s–600 s for the
+ * responsive signal, so no window straddles the handover):
+ *   before  232.85 s, ranging 187.4 – 289.0
+ *   after   203.91 s, ranging 178.1 – 260.7
+ * a fall of 12.4%. The ranges overlap: this is a noisy measure of a real step,
+ * not a clean separation, and the page says so rather than cropping the chart.
+ *
+ * COUNTERFACTUAL FAMILY — the rigorous claim in this section. Because
+ * `demo_fixed.traj` is the same run left on the timer, the second five minutes
+ * can be compared directly, same arrivals against same arrivals. Over
+ * 300 s–600 s: the responsive signal generated 42413 driver-seconds of delay and
+ * cleared 207 drivers, 204.9 s each; the timer generated 44313 and cleared 171,
+ * 259.1 s each. 20.9% less waiting and 21.1% more drivers through.
+ *
+ * That the second figure is the larger one is not an inconsistency, it is the
+ * finding: left alone, this junction was getting WORSE over the second five
+ * minutes (230.7 s in the first half, 259.1 s in the second), and the responsive
+ * rule did not merely stop that, it pulled the wait below where it started.
+ *
+ * Cars cleared per 60-second window: 35.3 on average before (30–40), 41.8 after
+ * (33–47).
+ *
+ * "Stays down" is a claim, so it is measured too: 95.4% of the windows after
+ * the handover sit below the fixed timer's average, and the only excursions
+ * above it are the settling minute right after the change (360–366 s) and one
+ * five-second wobble at 562–566 s.
+ */
+export const SWITCH_RESULT = {
+  /** Length of the trailing window the live reading and the chart both use. */
+  windowSeconds: 60,
+  beforeWaitSeconds: 233,
+  beforeLowSeconds: 187,
+  beforeHighSeconds: 289,
+  afterWaitSeconds: 204,
+  afterLowSeconds: 178,
+  afterHighSeconds: 261,
+  windowFallPct: 12,
+  /** Share of post-handover windows sitting below the timer's own average. */
+  belowBeforeAveragePct: 95,
+  /** Second five minutes, responsive: per driver cleared, and how many. */
+  secondHalfWaitSeconds: 205,
+  secondHalfCars: 207,
+  /** The same five minutes of the same run left on the timer. */
+  heldFixedWaitSeconds: 259,
+  heldFixedCars: 171,
+  heldFixedFallPct: 21,
+  heldFixedMoreCarsPct: 21,
+  /** First five minutes, under the timer, as one block. */
+  firstHalfWaitSeconds: 231,
+  firstHalfCars: 176,
+  carsPerMinuteBefore: 35,
+  carsPerMinuteAfter: 42,
 } as const;
 
 /**
@@ -164,6 +263,43 @@ export interface Caption {
 }
 
 /**
+ * Commentary for the leading clip, keyed to its own timeline. The handover is
+ * at 300 s, so the line that lands there is a fact about the file rather than a
+ * live inference — and the two lines after it exist to stop a visitor reading a
+ * verdict into the first noisy minute following the change.
+ */
+export const SWITCH_CAPTIONS: readonly Caption[] = [
+  {
+    from: 0,
+    text: "One junction, ten minutes, heavy traffic the whole way through. Right now the light is on a fixed timer: each direction gets its turn for a set length of time, whether or not anybody is there to use it.",
+  },
+  {
+    from: 110,
+    text: "The big number is the waiting this junction generated over the last minute, shared out between the drivers who actually got through it in that minute. It needs a full minute of clip before it will say anything, and it jumps around — the trend is the reading, not the last digit.",
+  },
+  {
+    from: 215,
+    text: "Queues are building on both roads. A fixed timer cannot do anything about that: every second of green it hands to an empty lane is a second the queue on the other road keeps growing.",
+  },
+  {
+    from: 300,
+    text: "The light has just changed hands. Same junction, same recording, same drivers still arriving on the same seconds — from here the signal senses the traffic waiting, holds a green while cars are still coming, and ends it early once the road is clear.",
+  },
+  {
+    from: 362,
+    text: "Give it a minute. The first window after the handover still carries the queue the timer left behind, so it reads high; what happens after that is the thing worth watching.",
+  },
+  {
+    from: 430,
+    text: "Below the fixed timer's average and staying there: 95% of the windows after the handover sit under it, and the two that do not are the settling minute and one brief wobble. More cars are finishing each minute as well, so this is not waiting traded away for throughput.",
+  },
+  {
+    from: 540,
+    text: "Nothing about the traffic changed at the five-minute mark. The demand, the routes and the drivers are identical either side of it. The only thing that changed is the rule the light follows.",
+  },
+] as const;
+
+/**
  * Rotating explanation of what is on screen, keyed to the clip's own timeline
  * (a fact about the file, not a live inference). Plain words only.
  */
@@ -191,15 +327,15 @@ export const CAPTIONS: readonly Caption[] = [
 ] as const;
 
 /** The caption that applies `seconds` into the clip. */
-export function captionIndexAt(seconds: number): number {
+export function captionIndexAt(seconds: number, lines: readonly Caption[] = CAPTIONS): number {
   let index = 0;
-  for (let i = 0; i < CAPTIONS.length; i++) {
-    if (seconds >= CAPTIONS[i].from) index = i;
+  for (let i = 0; i < lines.length; i++) {
+    if (seconds >= lines[i].from) index = i;
   }
   return index;
 }
 
 /** The caption text that applies `seconds` into the clip. */
-export function captionAt(seconds: number): string {
-  return CAPTIONS[captionIndexAt(seconds)].text;
+export function captionAt(seconds: number, lines: readonly Caption[] = CAPTIONS): string {
+  return lines[captionIndexAt(seconds, lines)].text;
 }

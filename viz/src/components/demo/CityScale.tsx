@@ -191,7 +191,7 @@ export default function CityScale() {
   return (
     <section className={styles.city} id="city">
       <div className={styles.cityHead}>
-        <div className={styles.sectionKicker}>Part two · a hundred junctions at once</div>
+        <div className={styles.sectionKicker}>Part three · a hundred junctions at once</div>
         <h2 className={styles.sectionTitle}>
           The same test, run across a whole city
         </h2>
