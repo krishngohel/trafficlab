@@ -11,7 +11,16 @@ import styles from "./Demo.module.css";
  * the research tool — so playing at 8x never triggers a React render.
  */
 export interface LiveHandles {
-  /** Mean wait readout, [fixed, responsive]. */
+  /** The hero panel — carries `data-lead`, so the whole panel takes the colour. */
+  heroBox: HTMLElement | null;
+  /** The big saved-waiting counter, e.g. "2h 09m". */
+  savedValue: HTMLElement | null;
+  /** The sentence under it, which continues the number grammatically. */
+  savedLine: HTMLElement | null;
+  /** The supporting "31% faster" reading off mean speed. */
+  fasterValue: HTMLElement | null;
+  fasterLine: HTMLElement | null;
+  /** Running-average wait readout, [fixed, responsive]. Deliberately small. */
   wait: [HTMLSpanElement | null, HTMLSpanElement | null];
   /** Cars-through readout, [fixed, responsive]. */
   cars: [HTMLElement | null, HTMLElement | null];
@@ -21,10 +30,8 @@ export interface LiveHandles {
   pill: [HTMLElement | null, HTMLElement | null];
   /** "Faster" flag on each label over the 3D stage. */
   stageFlag: [HTMLElement | null, HTMLElement | null];
-  /** The banner box — carries `data-lead` so the whole panel takes the colour. */
-  verdictBox: HTMLElement | null;
-  verdictHead: HTMLElement | null;
-  verdictDetail: HTMLElement | null;
+  /** One live line summarising the two settling averages. */
+  gapLine: HTMLElement | null;
   caption: HTMLParagraphElement | null;
   elapsed: HTMLSpanElement | null;
   trackFill: HTMLDivElement | null;
@@ -32,14 +39,17 @@ export interface LiveHandles {
 
 export function emptyHandles(): LiveHandles {
   return {
+    heroBox: null,
+    savedValue: null,
+    savedLine: null,
+    fasterValue: null,
+    fasterLine: null,
     wait: [null, null],
     cars: [null, null],
     bar: [null, null],
     pill: [null, null],
     stageFlag: [null, null],
-    verdictBox: null,
-    verdictHead: null,
-    verdictDetail: null,
+    gapLine: null,
     caption: null,
     elapsed: null,
     trackFill: null,
@@ -47,9 +57,14 @@ export function emptyHandles(): LiveHandles {
 }
 
 /**
- * One light's row: who it is, how long its drivers have waited drawn as a bar,
- * and the two numbers behind the bar. Two of these stacked is the comparison —
- * a visitor reads which bar is shorter without reading a single digit.
+ * One light's row: who it is, how long its drivers have waited on average drawn
+ * as a bar, and the two numbers behind the bar.
+ *
+ * These are running averages since the clip started, so they climb towards a
+ * settled value rather than falling — which is exactly why they are no longer
+ * the headline, and why the unit under each one says so out loud. Two of these
+ * stacked is still the side-by-side comparison: a visitor reads which bar is
+ * shorter without reading a digit.
  */
 function Row({
   name,
@@ -112,7 +127,9 @@ function Row({
         <span ref={pillRef} className={styles.fasterPill} hidden>
           Faster
         </span>
-        <span className={styles.rowWaitUnit}>average wait per driver</span>
+        <span className={styles.rowWaitUnit}>
+          average wait per driver <b>so far</b> (a running average — it settles as the clip runs)
+        </span>
       </div>
 
       <div className={styles.rowCars}>
@@ -124,13 +141,19 @@ function Row({
 }
 
 /**
- * The focal point of the page: a one-line verdict on which light is currently
- * ahead, and two bars whose lengths say the same thing without words. Nothing
- * here holds state — the caller owns the elements and writes them from the
- * render loop.
+ * The focal point of the page.
  *
- * Both comparisons on the page use this, the one junction and the hundred, so
- * a visitor who has learnt to read it once has learnt to read it twice.
+ * The hero is waiting that did not happen: the gap between the two runs'
+ * accumulated delay, in driver-minutes and hours. It climbs, and climbing is
+ * the point — it is a benefit adding up, and the words around it say so. Beside
+ * it sits a reading that genuinely moves both ways, how much faster the traffic
+ * is flowing on the responsive side over the last minute. Underneath, smaller,
+ * the two settling averages and their bars.
+ *
+ * Nothing here holds state: the caller owns the elements and writes them from
+ * the render loop. Both comparisons on the page use this component — the one
+ * junction and the hundred — so a visitor who has learnt to read it once has
+ * learnt to read it twice.
  */
 export default function Scoreboard({
   handles,
@@ -143,33 +166,63 @@ export default function Scoreboard({
 }) {
   const boxRef = useCallback(
     (el: HTMLElement | null) => {
-      handles.current.verdictBox = el;
+      handles.current.heroBox = el;
     },
     [handles],
   );
-  const headRef = useCallback(
+  const savedValueRef = useCallback(
     (el: HTMLElement | null) => {
-      handles.current.verdictHead = el;
+      handles.current.savedValue = el;
     },
     [handles],
   );
-  const detailRef = useCallback(
+  const savedLineRef = useCallback(
     (el: HTMLElement | null) => {
-      handles.current.verdictDetail = el;
+      handles.current.savedLine = el;
+    },
+    [handles],
+  );
+  const fasterValueRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.fasterValue = el;
+    },
+    [handles],
+  );
+  const fasterLineRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.fasterLine = el;
+    },
+    [handles],
+  );
+  const gapLineRef = useCallback(
+    (el: HTMLElement | null) => {
+      handles.current.gapLine = el;
     },
     [handles],
   );
 
   return (
-    <section className={styles.scoreboard} aria-label="Which light is faster right now">
-      <div ref={boxRef} className={styles.verdict} data-lead="unknown">
-        <span className={styles.verdictKicker}>Right now</span>
-        <strong ref={headRef} className={styles.verdictHead}>
-          Waiting for the first cars
-        </strong>
-        <span ref={detailRef} className={styles.verdictDetail}>
-          The comparison starts the moment traffic reaches the junction.
-        </span>
+    <section className={styles.scoreboard} aria-label="How much waiting has been saved so far">
+      <div ref={boxRef} className={styles.hero} data-lead="unknown">
+        <div className={styles.heroMain}>
+          <span className={styles.heroKicker}>Driver waiting saved so far</span>
+          <strong ref={savedValueRef} className={styles.heroValue}>
+            –
+          </strong>
+          <span ref={savedLineRef} className={styles.heroLine}>
+            The count starts the moment traffic reaches both junctions.
+          </span>
+        </div>
+
+        <div className={styles.heroAside}>
+          <span className={styles.heroKicker}>And right now</span>
+          <b ref={fasterValueRef} className={styles.heroAsideValue}>
+            –
+          </b>
+          <span ref={fasterLineRef} className={styles.heroAsideLine}>
+            Measuring how fast the traffic is moving on each side.
+          </span>
+        </div>
       </div>
 
       <div className={styles.rows}>
@@ -191,7 +244,12 @@ export default function Scoreboard({
         />
       </div>
 
-      <p className={styles.rowFoot}>{foot}</p>
+      <p className={styles.rowFoot}>
+        <b ref={gapLineRef} className={styles.gapLine}>
+          Waiting for the first cars
+        </b>
+        {foot}
+      </p>
     </section>
   );
 }

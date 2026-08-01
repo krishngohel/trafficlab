@@ -6,7 +6,6 @@ import {
   formatCount,
   formatElapsed,
   formatPercent,
-  verdict,
   waitBars,
   waitGap,
 } from "./format";
@@ -133,41 +132,6 @@ describe("captions", () => {
   it("uses no research jargon", () => {
     const banned = /actuated|max-pressure|throughput|delay per vehicle|policy|trajectory|reward/i;
     for (const c of CAPTIONS) expect(c.text).not.toMatch(banned);
-  });
-});
-
-describe("verdict", () => {
-  it("names the responsive signal when it is ahead, with the size of the lead", () => {
-    const v = verdict(waitGap(167, 135));
-    expect(v.leader).toBe("responsive");
-    expect(v.headline).toBe("The responsive signal is winning");
-    expect(v.detail).toContain("right");
-    expect(v.detail).toContain("32s");
-    expect(v.detail).toContain("19%");
-  });
-
-  it("names the fixed timer just as plainly when the roles are reversed", () => {
-    const v = verdict(waitGap(135, 167));
-    expect(v.leader).toBe("fixed");
-    expect(v.headline).toBe("The fixed timer is winning");
-    expect(v.detail).toContain("left");
-    expect(v.detail).toContain("32s");
-  });
-
-  it("declines to pick a winner when the two are level or unknown", () => {
-    expect(verdict(waitGap(100, 100)).leader).toBe("even");
-    expect(verdict(waitGap(100, 100)).headline).toBe("Neck and neck");
-    expect(verdict(waitGap(NaN, 12)).leader).toBe("unknown");
-    expect(verdict(waitGap(0, 0)).leader).toBe("unknown");
-  });
-
-  it("always says something a visitor can read", () => {
-    for (const g of [waitGap(167, 135), waitGap(135, 167), waitGap(1, 1), waitGap(NaN, NaN)]) {
-      const v = verdict(g);
-      expect(v.headline.length).toBeGreaterThan(8);
-      expect(v.detail.length).toBeGreaterThan(20);
-      expect(v.detail).not.toMatch(/NaN|undefined|Infinity/);
-    }
   });
 });
 

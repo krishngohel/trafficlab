@@ -86,51 +86,6 @@ export function describeGap(gap: WaitGap): string {
   }
 }
 
-/** The banner that answers "which one is faster?" without any arithmetic. */
-export interface Verdict {
-  leader: Leader;
-  /** Six words at most — the thing read in the first second. */
-  headline: string;
-  /** One plain sentence with the size of the lead in it. */
-  detail: string;
-}
-
-/**
- * Turn the live gap into the sentence at the top of the page. Deliberately
- * symmetric: if the fixed timer were ahead it would say so in the same words,
- * because the banner is read straight off the simulation rather than asserted.
- */
-export function verdict(gap: WaitGap): Verdict {
-  const by = formatClock(Math.abs(gap.seconds));
-  const pct = formatPercent(gap.pct);
-  switch (gap.leader) {
-    case "unknown":
-      return {
-        leader: gap.leader,
-        headline: "Waiting for the first cars",
-        detail: "The comparison starts the moment traffic reaches the junction.",
-      };
-    case "even":
-      return {
-        leader: gap.leader,
-        headline: "Neck and neck",
-        detail: "So far both lights are costing drivers about the same wait.",
-      };
-    case "responsive":
-      return {
-        leader: gap.leader,
-        headline: "The responsive signal is winning",
-        detail: `Drivers on the right have waited ${by} less each — ${pct} less than the left.`,
-      };
-    case "fixed":
-      return {
-        leader: gap.leader,
-        headline: "The fixed timer is winning",
-        detail: `Drivers on the left have waited ${by} less each — ${pct} less than the right.`,
-      };
-  }
-}
-
 /** Shortest bar that is still visibly a bar, in percent of the track. */
 const MIN_BAR_PCT = 2;
 

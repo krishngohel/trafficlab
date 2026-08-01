@@ -52,6 +52,34 @@ export const CLIP_RESULT = {
 } as const;
 
 /**
+ * What the same clip is worth in the unit the page now leads with: waiting that
+ * did not happen.
+ *
+ * Read straight off the last frame of the two recordings the browser plays, so
+ * the live counter and this figure are the same arithmetic on the same bytes
+ * and land on the same number at the end of the clip — no reconciliation
+ * needed. `cumulative_delay` at frame 1199 of `demo_fixed.traj` is 84970.6
+ * driver-seconds and of `demo_actuated.traj` is 77216.2, a difference of 7754.4
+ * — a little over two hours of collective standing still, removed from ten
+ * minutes at one junction. Each figure below is its own value rounded to the
+ * second and the three agree with each other, so a reader who subtracts the two
+ * totals gets the saving the page prints; a test holds them to that.
+ *
+ * `fasterPct` is the whole-clip mean of `mean_speed`: 1.14 m/s under the fixed
+ * timer against 1.47 m/s under the responsive signal. The live reading on the
+ * page is a trailing 60-second mean of the same series, so it moves around this
+ * figure rather than sitting on it.
+ */
+export const CLIP_SAVED = {
+  fixedDelaySeconds: 84971,
+  responsiveDelaySeconds: 77216,
+  savedSeconds: 7755,
+  fixedSpeedMps: 1.14,
+  responsiveSpeedMps: 1.47,
+  fasterPct: 29,
+} as const;
+
+/**
  * The city-scale pair, `public/fixtures/metro_{fixed,actuated}.traj`.
  *
  * Same network, same demand, same seed (3), same five recorded minutes after
@@ -98,6 +126,29 @@ export const CITY_RESULT = {
   extraCars: 102,
 } as const;
 
+/**
+ * The city pair in the same saved-waiting unit, read off the last frame of the
+ * two recordings exactly as `CLIP_SAVED` is.
+ *
+ * `cumulative_delay` at frame 599 is 202651.5 driver-seconds under fixed timers
+ * and 163128.6 under the responsive ones, a difference of 39522.9 — very nearly
+ * eleven hours of collective waiting, out of five minutes across a hundred
+ * junctions. These are the same totals the `simulate.py` runs quoted in
+ * `CITY_RESULT` print (202652 and 163129), so unlike the average-wait figures
+ * there is nothing to reconcile: the browser's live counter converges on this
+ * exact number because it is reading the exact same series.
+ *
+ * `fasterPct` is the whole-clip mean of `mean_speed`, 4.82 m/s against 5.64.
+ */
+export const CITY_SAVED = {
+  fixedDelaySeconds: 202652,
+  responsiveDelaySeconds: 163129,
+  savedSeconds: 39523,
+  fixedSpeedMps: 4.82,
+  responsiveSpeedMps: 5.64,
+  fasterPct: 17,
+} as const;
+
 /** The rigorous figures: ten full one-hour runs per light. */
 export const STUDY_RESULT = {
   runsPerSide: 10,
@@ -135,7 +186,7 @@ export const CAPTIONS: readonly Caption[] = [
   },
   {
     from: 480,
-    text: "By this point the responsive light has put more cars through the junction, and the average wait is tipping its way.",
+    text: "By this point the responsive light has put more cars through the junction, and the waiting it has spared those drivers is already well over an hour of collective time.",
   },
 ] as const;
 

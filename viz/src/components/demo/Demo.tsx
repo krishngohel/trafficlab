@@ -6,13 +6,15 @@ import Link from "next/link";
 import {
   CAPTIONS,
   CLIP_RESULT,
+  CLIP_SAVED,
   FIXTURES,
   METRO,
   REPO_URL,
   SIDE_LABELS,
   STUDY_RESULT,
 } from "@/lib/demo/story";
-import { formatClock } from "@/lib/demo/format";
+import { formatClock, formatCount } from "@/lib/demo/format";
+import { formatSaved } from "@/lib/demo/savings";
 import { fetchWithProgress, formatBytes, loadPercent } from "@/lib/demo/load";
 import { VizEngine } from "@/lib/viz/engine";
 import CityScale from "./CityScale";
@@ -172,14 +174,17 @@ export default function Demo() {
         <div className={styles.head}>
           <div className={styles.sectionKicker}>Part one · one junction, two lights</div>
           <h1 className={styles.title}>
-            A traffic light that watches the traffic clears the same junction{" "}
-            <em>{CLIP_RESULT.waitReductionPct}% faster</em>.
+            A traffic light that watches the traffic spares its drivers{" "}
+            <em>{formatSaved(CLIP_SAVED.savedSeconds)} of waiting</em> in ten minutes, at one
+            junction.
           </h1>
           <p className={styles.lede}>
             Below is one busy junction, simulated twice over the same ten minutes. Both runs get the
             same cars arriving at the same second. On the <b className={styles.inkFixed}>left</b> the
             light runs to a fixed schedule; on the <b className={styles.inkResponsive}>right</b> it
-            senses the cars waiting and changes when they need it to. Nothing else differs.
+            senses the cars waiting and changes when they need it to. Nothing else differs — so
+            every second of waiting the right-hand junction avoids is a second the left-hand one
+            spent, and the counter below adds those seconds up as the clip plays.
           </p>
         </div>
 
@@ -187,10 +192,13 @@ export default function Demo() {
           handles={live}
           foot={
             <>
-              Longer bar means longer waiting. Both figures are running averages over everything
-              since the clip started, so they climb as the queues build. By the end of these{" "}
-              {CLIP_RESULT.minutes} minutes the responsive signal finishes{" "}
-              {CLIP_RESULT.waitReductionPct}% ahead.
+              Longer bar means longer waiting. Both of these are running averages over everything
+              since the clip started, so they climb towards a settled value as the queues build —
+              that is the shape of a running average, not the waiting getting worse. The counter
+              above is the thing that measures the improvement: the gap between the two, which
+              reaches {formatSaved(CLIP_SAVED.savedSeconds)} by the end of these{" "}
+              {CLIP_RESULT.minutes} minutes, with the responsive signal {CLIP_RESULT.waitReductionPct}%
+              ahead on the average.
             </>
           }
         />
@@ -312,9 +320,11 @@ export default function Demo() {
               <div className={styles.explainNum}>3</div>
               <h3>What the numbers count</h3>
               <p>
-                <b>Average wait</b> is the time an average driver has lost sitting still, added up
-                since the clip began. <b>Cars through</b> is how many have finished their trip.
-                Lower wait and more cars through at the same time is the whole prize.
+                <b>Waiting saved</b> is the headline: every second a driver on the left spent
+                stopped that their twin on the right did not, added across everybody. It climbs
+                because the saving keeps accruing. <b>Average wait</b>{" "}
+                is each side&rsquo;s own running average since the clip began — good for comparing the two, but it settles
+                rather than falls. <b>Cars through</b> is how many have finished their trip.
               </p>
             </div>
           </div>
@@ -323,12 +333,19 @@ export default function Demo() {
         <section className={styles.results}>
           <div className={styles.resultCard}>
             <div className={styles.resultKicker}>The clip above</div>
-            <div className={styles.resultBig}>{CLIP_RESULT.waitReductionPct}% less waiting</div>
+            <div className={styles.resultBig}>
+              {formatSaved(CLIP_SAVED.savedSeconds)} of waiting saved
+            </div>
             <p className={styles.resultBody}>
-              Average wait per driver fell from {formatClock(CLIP_RESULT.fixedWaitSeconds)} to{" "}
-              {formatClock(CLIP_RESULT.responsiveWaitSeconds)} across these{" "}
-              {CLIP_RESULT.minutes} minutes, while {CLIP_RESULT.responsiveCars} cars got through the
-              junction instead of {CLIP_RESULT.fixedCars}. More traffic, less waiting.
+              Over these {CLIP_RESULT.minutes} minutes the fixed timer cost its drivers{" "}
+              {formatCount(CLIP_SAVED.fixedDelaySeconds)} driver-seconds of delay and the responsive
+              signal {formatCount(CLIP_SAVED.responsiveDelaySeconds)} — a difference of{" "}
+              {formatCount(CLIP_SAVED.savedSeconds)} seconds, which is exactly what the counter
+              above counts up to. Average wait per driver fell from{" "}
+              {formatClock(CLIP_RESULT.fixedWaitSeconds)} to{" "}
+              {formatClock(CLIP_RESULT.responsiveWaitSeconds)},{" "}
+              {CLIP_RESULT.waitReductionPct}% less, while {CLIP_RESULT.responsiveCars} cars got
+              through the junction instead of {CLIP_RESULT.fixedCars}. More traffic, less waiting.
             </p>
           </div>
           <div className={styles.resultCard}>

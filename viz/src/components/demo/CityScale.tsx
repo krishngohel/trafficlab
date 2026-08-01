@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { CITY_RESULT, FIXTURES, METRO, SIDE_LABELS } from "@/lib/demo/story";
+import { CITY_RESULT, CITY_SAVED, FIXTURES, METRO, SIDE_LABELS } from "@/lib/demo/story";
 import { formatClock, formatCount } from "@/lib/demo/format";
+import { formatSaved } from "@/lib/demo/savings";
 import { fetchWithProgress, formatBytes, loadPercent } from "@/lib/demo/load";
 import { VizEngine } from "@/lib/viz/engine";
 import { DEFAULT_TOGGLES } from "@/lib/viz/view";
@@ -211,9 +212,10 @@ export default function CityScale() {
           carsUnit="trips finished so far"
           foot={
             <>
-              Read exactly as above: longer bar means longer waiting, and both figures are running
-              averages that climb as the clip goes on. Every number here is the whole city added
-              together, all {junctions}
+              Read exactly as above: the counter above is waiting that never happened, and the two
+              averages here are running averages that settle upward as the clip goes on rather than
+              getting worse. Every number is the whole city added together, all{" "}
+              {junctions}
               {" junctions’ worth, on each side."}
             </>
           }
@@ -227,14 +229,14 @@ export default function CityScale() {
           <>
             <span className={`${styles.sideTag} ${styles.sideTagLeft}`}>
               <span className={styles.dot} />
-              {SIDE_LABELS.fixed} · {junctions} junctions
+              {SIDE_LABELS.fixed}              <span className={styles.tagExtra}> · {junctions} junctions</span>
               <b ref={flagRefA} className={styles.stageFlag} hidden>
                 Faster
               </b>
             </span>
             <span className={`${styles.sideTag} ${styles.sideTagRight}`}>
               <span className={styles.dot} />
-              {SIDE_LABELS.responsive} · {junctions} junctions
+              {SIDE_LABELS.responsive}              <span className={styles.tagExtra}> · {junctions} junctions</span>
               <b ref={flagRefB} className={styles.stageFlag} hidden>
                 Faster
               </b>
@@ -354,24 +356,32 @@ export default function CityScale() {
           <div className={styles.resultKicker}>
             The city clip · {CITY_RESULT.minutes} minutes, {METRO.intersections} junctions
           </div>
-          <div className={styles.resultBig}>{CITY_RESULT.waitReductionPct}% less waiting</div>
+          <div className={styles.resultBig}>
+            {formatSaved(CITY_SAVED.savedSeconds)} of waiting saved
+          </div>
           <p className={styles.resultBody}>
-            Average wait per driver across the whole city was{" "}
-            {formatClock(CITY_RESULT.fixedWaitSeconds)} under fixed timers and{" "}
-            {formatClock(CITY_RESULT.responsiveWaitSeconds)} under the responsive signals — and{" "}
-            {formatCount(CITY_RESULT.responsiveCars)} drivers finished their trip instead of{" "}
-            {formatCount(CITY_RESULT.fixedCars)}, {CITY_RESULT.extraCars} more in five minutes. The
-            single-junction result holds when you repeat it a hundred times over.
+            Across the whole city the fixed timers cost their drivers{" "}
+            {formatCount(CITY_SAVED.fixedDelaySeconds)} driver-seconds of delay in five minutes and
+            the responsive signals {formatCount(CITY_SAVED.responsiveDelaySeconds)} — very nearly
+            eleven hours of collective standing still, gone, from five minutes of one city. Average
+            wait per driver was {formatClock(CITY_RESULT.fixedWaitSeconds)} against{" "}
+            {formatClock(CITY_RESULT.responsiveWaitSeconds)}, {CITY_RESULT.waitReductionPct}% less,
+            and {formatCount(CITY_RESULT.responsiveCars)} drivers finished their trip instead of{" "}
+            {formatCount(CITY_RESULT.fixedCars)}, {CITY_RESULT.extraCars} more. The single-junction
+            result holds when you repeat it a hundred times over.
           </p>
         </div>
         <div className={styles.resultCard}>
-          <div className={styles.resultKicker}>Why the live counter reads higher</div>
+          <div className={styles.resultKicker}>What agrees with what</div>
           <p className={styles.resultBody}>
-            The figures above count every driver the simulation created. The counter running on the
-            picture can only count drivers it can still see plus those who finished at the
-            roadside — in this city a good number of trips end in an off-street parking space, and
-            the recording does not carry that tally. So the live wait reads a little high, and the
-            live gap comes out at 16% rather than {CITY_RESULT.waitReductionPct}%. Both are
+            The saved-waiting counter needs no caveat: total delay is written into both recordings
+            directly, so the number ticking over the picture lands on exactly the{" "}
+            {formatCount(CITY_SAVED.savedSeconds)} seconds quoted here. The average-wait figures do
+            need one. They divide that delay by every driver the simulation created, whereas the
+            browser can only count drivers still on the map plus those who finished at the
+            roadside — and in this city a good number of trips end in an off-street parking space
+            the recording does not tally. So the live averages read a little high, 1m 55s against
+            1m 37s, a 16% gap rather than this {CITY_RESULT.waitReductionPct}% one. Both are
             measured; the {CITY_RESULT.waitReductionPct}% is the one that counts everybody.
           </p>
         </div>

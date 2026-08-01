@@ -47,6 +47,10 @@ for (const name of readdirSync(fixtures)) {
   dropped++;
 }
 
+// GitHub Pages runs Jekyll over an uploaded tree unless told not to, and Jekyll
+// drops every path beginning with an underscore — which is all of `_next/`.
+writeFileSync(join("out", ".nojekyll"), "");
+
 // Long-lived caching for the immutable payload: fixtures and 3D assets are
 // content-fixed, the HTML is not.
 writeFileSync(

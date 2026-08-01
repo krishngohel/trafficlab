@@ -107,7 +107,7 @@
   max-width: 1040px;
 }
 
-/* --- the verdict + comparison bars (the hero) ---------------------------------- */
+/* --- the saved-time hero + comparison bars ------------------------------------- */
 
 .scoreboard {
   border: 1px solid var(--edge);
@@ -117,23 +117,26 @@
 }
 
 /*
- * The banner is written live from the simulation, so it says whatever the
- * numbers say. It is the first thing on the page a visitor can read in one
- * glance, and the row bars below repeat the same answer without any words.
+ * The hero is written live from the simulation, so it says whatever the numbers
+ * say. It counts waiting that did not happen — a quantity that climbs, in a
+ * direction that is unambiguously good — rather than either side's running
+ * average, which can only ever climb too but in a direction that reads as
+ * things getting worse. See lib/demo/savings.ts.
  */
-.verdict {
+.hero {
   position: relative;
-  padding: clamp(14px, 1.7vw, 20px) clamp(16px, 2vw, 26px) clamp(13px, 1.5vw, 17px)
+  padding: clamp(16px, 2vw, 24px) clamp(16px, 2vw, 26px) clamp(15px, 1.8vw, 22px)
     clamp(20px, 2.2vw, 30px);
   background: var(--surface-soft);
   border-bottom: 1px solid var(--edge);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 300px);
+  align-items: center;
+  gap: clamp(16px, 2.4vw, 40px);
   --tone: var(--ink-faint);
 }
 
-.verdict::before {
+.hero::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
@@ -142,34 +145,74 @@
   transition: background 240ms ease;
 }
 
-.verdict[data-lead="responsive"] {
+.hero[data-lead="responsive"] {
   --tone: var(--responsive);
 }
 
-.verdict[data-lead="fixed"] {
+.hero[data-lead="fixed"] {
   --tone: var(--fixed);
 }
 
-.verdictKicker {
+.heroMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.heroKicker {
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-faint);
 }
 
-.verdictHead {
-  font-size: clamp(22px, 2.7vw, 34px);
-  line-height: 1.12;
+/* The largest thing on the page, and the only thing that has to be read. */
+.heroValue {
+  font-size: clamp(46px, 6.4vw, 88px);
+  line-height: 1;
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: -0.038em;
+  font-variant-numeric: tabular-nums;
   color: var(--tone);
+  transition: color 240ms ease;
 }
 
-.verdictDetail {
-  font-size: clamp(14.5px, 1.2vw, 17px);
-  line-height: 1.45;
+.heroLine {
+  font-size: clamp(14.5px, 1.25vw, 18px);
+  line-height: 1.4;
   color: #dbe2ea;
+  max-width: 46ch;
+}
+
+/*
+ * The number that genuinely moves both ways. Mean speed rises when a platoon
+ * gets released and falls when everyone stops, so this one is not a monotone
+ * counter — it is the reading that shows the difference breathing.
+ */
+.heroAside {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: clamp(14px, 1.8vw, 26px);
+  border-left: 1px solid var(--edge);
+  min-width: 0;
+}
+
+.heroAsideValue {
+  font-size: clamp(26px, 2.6vw, 36px);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.028em;
   font-variant-numeric: tabular-nums;
+  color: var(--tone);
+  transition: color 240ms ease;
+}
+
+.heroAsideLine {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-dim);
 }
 
 .rows {
@@ -257,19 +300,31 @@
   gap: 4px 10px;
 }
 
+/*
+ * Deliberately a supporting size. This is the number the page used to lead
+ * with, and leading with it was the bug: it is a running average since the clip
+ * started, so it can only climb towards its settled value, on a page whose
+ * claim is that waiting goes down.
+ */
 .rowWaitValue {
-  font-size: clamp(30px, 3.4vw, 44px);
+  font-size: clamp(22px, 2.1vw, 28px);
   line-height: 1;
   font-weight: 500;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.024em;
   font-variant-numeric: tabular-nums;
-  color: #f2f5f9;
+  color: #e4e9ef;
 }
 
 .rowWaitUnit {
   flex-basis: 100%;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--ink-faint);
+  line-height: 1.4;
+}
+
+.rowWaitUnit b {
+  font-weight: 600;
+  color: var(--ink-dim);
 }
 
 /* The badge that follows whichever light is ahead. */
@@ -325,6 +380,14 @@
   font-size: 12.5px;
   color: var(--ink-faint);
   line-height: 1.5;
+}
+
+/* The one live sentence about the settling averages, ahead of the fixed copy. */
+.gapLine {
+  color: var(--ink-dim);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
 }
 
 /* --- section furniture --------------------------------------------------------- */
@@ -951,8 +1014,11 @@
    * underneath running the full width. The two bars stay directly above one
    * another, which is the only thing the comparison actually needs.
    */
+  /* Both tracks are minmax(0, …) so the long "running average" caption wraps
+     inside its own half instead of widening an `auto` track until it runs
+     under the light's name. */
   .row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px 12px;
     padding: 13px 14px;
   }
@@ -985,10 +1051,11 @@
     justify-self: end;
     justify-content: flex-end;
     text-align: right;
+    min-width: 0;
   }
 
   .rowWaitValue {
-    font-size: clamp(24px, 7vw, 32px);
+    font-size: clamp(20px, 5.4vw, 26px);
   }
 
   .rowWaitUnit {
@@ -1036,6 +1103,12 @@
     right: 8px;
   }
 
+  /* Two tags plus "· 100 junctions" is wider than a phone, and the pair start
+     sitting on top of one another. The count is in the copy either way. */
+  .tagExtra {
+    display: none;
+  }
+
   .introSplit {
     grid-template-columns: 1fr;
   }
@@ -1045,8 +1118,31 @@
     width: 100%;
   }
 
-  .verdictHead {
-    font-size: clamp(20px, 6.4vw, 26px);
+  /* One column on a phone: the saved-time counter first and biggest, the
+     speed reading below it as its own block rather than a side panel. */
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 16px 14px 16px 18px;
+  }
+
+  .heroValue {
+    font-size: clamp(42px, 13vw, 60px);
+  }
+
+  .heroLine {
+    font-size: 14.5px;
+  }
+
+  .heroAside {
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: none;
+    border-top: 1px solid var(--edge);
+  }
+
+  .heroAsideValue {
+    font-size: 26px;
   }
 }
 
@@ -1054,7 +1150,9 @@
   .caption,
   .loadingFill,
   .barFill,
-  .verdict::before {
+  .heroValue,
+  .heroAsideValue,
+  .hero::before {
     transition: none;
   }
 }

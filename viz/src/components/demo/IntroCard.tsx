@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 
-import { CLIP_RESULT, METRO, SIDE_LABELS } from "@/lib/demo/story";
+import { CLIP_RESULT, CLIP_SAVED, METRO, SIDE_LABELS } from "@/lib/demo/story";
 import { formatClock } from "@/lib/demo/format";
+import { formatSaved } from "@/lib/demo/savings";
 import styles from "./Demo.module.css";
 
 /**
@@ -49,10 +50,11 @@ export default function IntroCard({ onDismiss }: { onDismiss: () => void }) {
             </div>
           </div>
           <p>
-            Over these ten minutes the responsive light brought the average wait down from{" "}
-            <strong>{formatClock(CLIP_RESULT.fixedWaitSeconds)}</strong> to{" "}
-            <strong>{formatClock(CLIP_RESULT.responsiveWaitSeconds)}</strong> a driver — and still
-            got <strong>{CLIP_RESULT.responsiveCars} cars</strong> through the junction instead of{" "}
+            Over these ten minutes the responsive light spares its drivers{" "}
+            <strong>{formatSaved(CLIP_SAVED.savedSeconds)}</strong> of waiting between them —
+            average wait down from <strong>{formatClock(CLIP_RESULT.fixedWaitSeconds)}</strong> to{" "}
+            <strong>{formatClock(CLIP_RESULT.responsiveWaitSeconds)}</strong> a driver, and still{" "}
+            <strong>{CLIP_RESULT.responsiveCars} cars</strong> through the junction instead of{" "}
             <strong>{CLIP_RESULT.fixedCars}</strong>. More traffic, less waiting.
           </p>
         </div>
